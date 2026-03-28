@@ -22,7 +22,6 @@
         <option value="album">Album</option>
         <option value="song">Song</option>
         <option value="day">Day</option>
-        <option value="week">Week</option>
         <option value="month">Month</option>
         <option value="year">Year</option>
     </select>
@@ -46,9 +45,13 @@
     <button onclick="runQuery()">Run</button>
 </div>
 
-<canvas id="chart" style="max-width:800px;"></canvas>
+<div class="controls">
+    <button onclick="toggleView()">Toggle Grid/Card</button>
+</div>
 
-<table id="resultsTable"></table>
+<div id="resultsContainer" class="card-view"></div>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>

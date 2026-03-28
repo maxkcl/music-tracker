@@ -57,12 +57,18 @@ def get_or_create_artist(name):
 
     if row:
         artist_id = row[0]
+
+        # update image if missing
+        if not row[1] and image_url:
+            cur.execute("UPDATE tbl_Artist SET ImageURL = ? WHERE ID = ?", image_url, artist_id)
+
     else:
         cur.execute("""
-            INSERT INTO tbl_Artist (ArtistName)
+            INSERT INTO tbl_Artist (ArtistName, ImageURL)
             OUTPUT INSERTED.ID
-            VALUES (?)
-        """, name)
+            VALUES (?, ?)
+        """, name, image_url)
+
         artist_id = cur.fetchone()[0]
 
     artist_cache[name] = artist_id
@@ -83,12 +89,20 @@ def get_or_create_album(name, artist_id):
 
     if row:
         album_id = row[0]
+
+        if not row[1] and image_url:
+            cur.execute("""
+                UPDATE tbl_Album SET ImageURL = ?
+                WHERE ID = ?
+            """, image_url, album_id)
+
     else:
         cur.execute("""
-            INSERT INTO tbl_Album (AlbumName, Artist_FK)
+            INSERT INTO tbl_Album (AlbumName, Artist_FK, ImageURL)
             OUTPUT INSERTED.ID
-            VALUES (?, ?)
-        """, name, artist_id)
+            VALUES (?, ?, ?)
+        """, name, artist_id, image_url)
+
         album_id = cur.fetchone()[0]
 
     album_cache[key] = album_id

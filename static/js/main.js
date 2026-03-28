@@ -16,58 +16,83 @@ async function runQuery() {
     });
 
     const data = await res.json();
-    renderTable(data);
+    renderCards(data);
 }
 
-function renderTable(data) {
-    const table = document.getElementById("resultsTable");
-    table.innerHTML = "";
+function renderCards(data) {
+    const container = document.getElementById("resultsContainer");
+    container.innerHTML = "";
 
     if (!data.length) {
-        table.innerHTML = "<tr><td>No results</td></tr>";
+        container.innerHTML = "<p>No results</p>";
         return;
     }
 
-    const headers = Object.keys(data[0]);
+    data.forEach((row, index) => {
+        const img = row.ImageURL || "https://via.placeholder.com/300x300?text=No+Image";
 
-    let headerRow = "<tr>";
-    headers.forEach(h => headerRow += `<th onclick="sortTable('${h}')">${h}</th>`);
-    headerRow += "</tr>";
+        const card = `
+            <div class="card">
+                <img src="${img}">
+                <div class="card-title">${row.label}</div>
+                <div class="card-value">${row.value} plays</div>
+                <div>#${index + 1}</div>
+            </div>
+        `;
 
-    table.innerHTML += headerRow;
-
-    data.forEach(row => {
-        let tr = "<tr>";
-        headers.forEach(h => tr += `<td>${row[h]}</td>`);
-        tr += "</tr>";
-        table.innerHTML += tr;
+        container.innerHTML += card;
     });
 }
 
-function sortTable(column) {
-    lastData.sort((a, b) => (b[column] > a[column] ? 1 : -1));
-    renderTable(lastData);
-}
+function renderCell(row, column) {
+    // Normalize column name
+    const col = column.toLowerCase();
 
-function toggleChart() {
-    if (!lastData.length) return;
-
-    const ctx = document.getElementById("chart");
-
-    if (chartInstance) {
-        chartInstance.destroy();
-        chartInstance = null;
-        return;
+    // Artist
+    if (col.includes("artist") && row.ImageURL) {
+        return `
+            <div style="display:flex;align-items:center;gap:8px;">
+                <img src="${row.ImageURL}" width="40" height="40" style="border-radius:50%;">
+                ${row[column]}
+            </div>
+        `;
     }
 
-    chartInstance = new Chart(ctx, {
-        type: "bar",
-        data: {
-            labels: lastData.map(d => d.label),
-            datasets: [{
-                label: "Plays",
-                data: lastData.map(d => d.plays)
-            }]
-        }
-    });
+    // Album
+    if (col.includes("album") && row.ImageURL) {
+        return `
+            <div style="display:flex;align-items:center;gap:8px;">
+                <img src="${row.ImageURL}" width="40" height="40">
+                ${row[column]}
+            </div>
+        `;
+    }
+
+    // Song → use album art
+    if (col.includes("song") && row.ImageURL) {
+        return `
+            <div style="display:flex;align-items:center;gap:8px;">
+                <img src="${row.ImageURL}" width="40" height="40">
+                ${row[column]}
+            </div>
+        `;
+    }
+
+    return row[column];
+}
+
+let currentView = "card";
+
+function toggleView() {
+    const container = document.getElementById("resultsContainer");
+
+    if (currentView === "card") {
+        container.classList.remove("card-view");
+        container.classList.add("grid-view");
+        currentView = "grid";
+    } else {
+        container.classList.remove("grid-view");
+        container.classList.add("card-view");
+        currentView = "card";
+    }
 }

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Listening Data Discovery</title>
+    <style>
+        body { font-family: Arial; margin: 30px; background: #121212; color: white; }
+        input, select, button { margin: 5px; padding: 5px; }
+        table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+        th, td { border: 1px solid #444; padding: 8px; }
+        th { cursor: pointer; background: #222; }
+        tr:nth-child(even) { background: #1a1a1a; }
+    </style>
+</head>
+<body>
+
+<h2>Query Builder</h2>
+
+<div>
+    <label>Select:</label>
+    <select id="selectField">
+        <option value="artist">Artist</option>
+        <option value="album">Album</option>
+        <option value="song">Song</option>
+        <option value="day">Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+        <option value="year">Year</option>
+    </select>
+
+    <label>Metric:</label>
+    <select id="metric">
+        <option value="plays">Plays</option>
+        <option value="songs">Songs</option>
+        <option value="albums">Albums</option>
+    </select>
+
+    <label>Condition:</label>
+    <select id="operator">
+        <option value=">">Over</option>
+        <option value="<">Under</option>
+        <option value="=">Equals</option>
+    </select>
+
+    <input type="number" id="value" placeholder="Enter number">
+
+    <button onclick="runQuery()">Run</button>
+</div>
+
+<canvas id="chart" style="max-width:800px;"></canvas>
+
+<table id="resultsTable"></table>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+</body>
+</html>

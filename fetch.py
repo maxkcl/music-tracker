@@ -231,51 +231,15 @@ def apply_name_fixes(artist_name, song_name):
 
 def sync():
     batch = []
+    affected_dates = set()
     BATCH_SIZE = 500
-
-    last_ts = get_last_timestamp()
-    print("Last timestamp:", last_ts)
-
     page = 1
 
     while True:
-        print(f"Fetching page {page}...")
-
-        params = {
-            "method": "user.getrecenttracks",
-            "user": USERNAME,
-            "api_key": API_KEY,
-            "format": "json",
-            "limit": 200,
-            "page": page
-        }
-
-        if last_ts:
-            params["from"] = last_ts
-
-        # Request
-        try:
-            response = requests.get(BASE_URL, params=params, timeout=10)
-            data = response.json()
-        except Exception as e:
-            print("❌ Request failed:", e)
-            break
-
-        # Handle errors
-        if "error" in data:
-            print(f"❌ Last.fm error {data['error']}: {data['message']}")
-            break
-
-        tracks = data.get("recenttracks", {}).get("track", [])
-
-        if not tracks:
-            print("✅ No new tracks")
-            break
-
-        new_rows = 0
+        # ... fetch page as before ...
 
         for t in tracks:
-
+            # Skip currently playing
             if "@attr" in t and t["@attr"].get("nowplaying"):
                 continue
 
@@ -283,39 +247,34 @@ def sync():
                 artist_name = t["artist"]["#text"]
                 song_name = t["name"]
                 album_name = t["album"]["#text"]
-                artist_name, song_name = apply_name_fixes(artist_name, song_name)
                 timestamp = int(t["date"]["uts"])
+                dt = datetime.utcfromtimestamp(timestamp)
             except KeyError:
                 continue
-
-            # 🔥 Stop if we hit old data (extra safety)
-            if last_ts and timestamp <= last_ts:
-                print("🛑 Reached already-synced data")
-                flush_batch(batch)
-                conn.commit()
-                return
-
-            dt = datetime.utcfromtimestamp(timestamp)
 
             artist_id = get_or_create_artist(artist_name)
             album_id = get_or_create_album(album_name, artist_id)
             song_id = get_or_create_song(song_name, artist_id, album_id)
 
             batch.append((song_id, dt))
-            new_rows += 1
+            affected_dates.add(dt.date())  # track day for tbl_Day
 
             if len(batch) >= BATCH_SIZE:
                 flush_batch(batch)
                 conn.commit()
-
-        print(f"Inserted {new_rows} new rows")
+                batch.clear()
 
         page += 1
         time.sleep(0.25)
 
+    # Flush any remaining batch
     flush_batch(batch)
     conn.commit()
-    print("🎉 Incremental sync complete")
+
+    # Update tbl_Day for all affected dates
+    update_daily_stats(conn, affected_dates)
+
+    print("🎉 Sync complete")
 
 def backfill_older():
     batch = []

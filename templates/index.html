@@ -14,59 +14,35 @@
 <body>
 
 <h2>Query Builder</h2>
-
-<div>
-    <label>Select:</label>
+<!-- Query Form -->
+<div id="queryForm">
     <select id="selectField">
-        <option value="artist">Artist</option>
-        <option value="album">Album</option>
         <option value="song">Song</option>
+        <option value="album">Album</option>
+        <option value="artist">Artist</option>
         <option value="day">Day</option>
         <option value="month">Month</option>
         <option value="year">Year</option>
     </select>
 
-    <label>Metric:</label>
     <select id="metric">
         <option value="plays">Plays</option>
         <option value="songs">Songs</option>
         <option value="albums">Albums</option>
     </select>
 
-    <label>Condition:</label>
     <select id="operator">
-        <option value=">">Over</option>
-        <option value="<">Under</option>
-        <option value="=">Equals</option>
+        <option value=">">></option>
+        <option value="<"><</option>
+        <option value="=">=</option>
     </select>
 
-    <input type="number" id="value" placeholder="Enter number">
+    <input type="number" id="value" placeholder="Value" />
 
-    <button onclick="runQuery()">Run</button>
+    <button type="button" onclick="runQuery()">Run Query</button>
 </div>
 
-<div id="view-toggle">
-    <button id="toggle-view-btn">Switch to Grid View</button>
-</div>
-
-<!-- GRID VIEW -->
-<div id="results-grid" style="display:none;"></div>
-
-
-<!-- LIST VIEW -->
-<div id="results-list"></div>
-    <table id="results-table">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Details</th>
-                <th>Value</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
-</div>
+<div id="results"></div> <!-- ONLY the list view container -->
 
 <div id="name-fix-container">
     <h2>Fix Names</h2>

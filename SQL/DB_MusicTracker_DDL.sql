@@ -6,6 +6,7 @@ Date: 2026-03-27
 vers     Date        Coder       Issue
 1.0      2026-03-27  Max         Initial
 1.1      2026-03-28  Max         Photos
+1.2      2026-03-29  Max         Name Fix
 */
 
 USE master
@@ -56,4 +57,14 @@ CREATE TABLE tbl_NameFixes (
     OldName NVARCHAR(255),
     NewName NVARCHAR(255),
     ArtistContext NVARCHAR(255) NULL  -- only used for songs
+);
+
+CREATE TABLE tbl_Day
+(
+    DayDate DATE PRIMARY KEY,
+    NumPlays INT DEFAULT 0,
+    TopSong NVARCHAR(255) NULL,
+    TopSongPlays INT DEFAULT 0,
+    TopArtist NVARCHAR(255) NULL,
+    TopArtistPlays INT DEFAULT 0
 );

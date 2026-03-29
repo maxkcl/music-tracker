@@ -11,13 +11,28 @@ LEFT JOIN tbl_Song So ON S.Song_FK = So.ID
 GROUP BY Song_FK, SongName
 ORDER BY Plays DESC
 
+SELECT * FROM tbl_Song S
+LEFT JOIN tbl_Artist A ON A.ID = S.Artist_FK
+WHERE A.ArtistName = 'Mammoth'
+ORDER BY SongName
+
 --DELETE FROM tbl_Scrobble
 --DELETE FROM tbl_Song
 --DELETE FROM tbl_Album
 --DELETE FROM tbl_Artist
 
-SELECT * FROM tbl_Scrobble
+SELECT * FROM tbl_Scrobble S
+LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
+WHERE So.SongName = 'Distance'
 SELECT * FROM tbl_Artist
 SELECT * FROM tbl_Album
 SELECT * FROM tbl_Song
 SELECT * FROM tbl_NameFixes
+SELECT * FROM tbl_Day
+ORDER BY TopSongPlays DESC
+
+DELETE FROM tbl_NameFixes
+
+INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext) VALUES
+('song','Think it over','Think It Over','Mammoth'),
+('artist','Chyl','CHYL',NULL)

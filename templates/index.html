@@ -45,11 +45,28 @@
     <button onclick="runQuery()">Run</button>
 </div>
 
-<div class="controls">
-    <button onclick="toggleView()">Toggle Grid/Card</button>
+<div id="view-toggle">
+    <button id="toggle-view-btn">Switch to Grid View</button>
 </div>
 
-<div id="resultsContainer" class="card-view"></div>
+<!-- GRID VIEW -->
+<div id="results-grid" style="display:none;"></div>
+
+
+<!-- LIST VIEW -->
+<div id="results-list"></div>
+    <table id="results-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Details</th>
+                <th>Value</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
 
 <div id="name-fix-container">
     <h2>Fix Names</h2>

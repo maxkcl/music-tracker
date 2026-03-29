@@ -26,10 +26,11 @@ conn, cur = get_connection()
 def index():
     return render_template("index.html")
 
+from flask import Flask, request, jsonify
+import pandas as pd
+
 @app.route("/api/query-builder", methods=["POST"])
 def query_builder():
-    from flask import request, jsonify
-
     data = request.json
 
     select = data.get("select")
@@ -37,24 +38,28 @@ def query_builder():
     operator = data.get("operator")
     value = data.get("value")
 
+    if not all([select, metric, operator, value is not None]):
+        return jsonify({"error": "Missing required fields"}), 400
+
     # =========================
     # SELECT FIELD MAPPING
     # =========================
+    select_sql = ""
+    group_sql = ""
+    extra_fields = ""  # for artist/album if needed
 
     if select == "artist":
         select_sql = "a.ArtistName"
-        image_sql = "a.ImageURL"
-        group_sql = "GROUP BY a.ArtistName, a.ImageURL"
+        group_sql = "GROUP BY a.ArtistName"
 
     elif select == "album":
         select_sql = "al.AlbumName"
-        image_sql = "al.ImageURL"
-        group_sql = "GROUP BY al.AlbumName, al.ImageURL"
+        group_sql = "GROUP BY al.AlbumName"
 
     elif select == "song":
         select_sql = "so.SongName"
-        image_sql = "al.ImageURL"
-        group_sql = "GROUP BY so.SongName, al.ImageURL"
+        group_sql = "GROUP BY so.SongName, a.ArtistName, al.AlbumName"
+        extra_fields = ", a.ArtistName AS ArtistName, al.AlbumName AS AlbumName"
 
     elif select == "day":
         select_sql = "CAST(DatetimePlayed AS DATE)"
@@ -74,25 +79,20 @@ def query_builder():
     # =========================
     # METRIC MAPPING
     # =========================
-
     if metric == "plays":
         metric_sql = "COUNT(*)"
-
     elif metric == "songs":
         metric_sql = "COUNT(DISTINCT so.ID)"
-
     elif metric == "albums":
         metric_sql = "COUNT(DISTINCT al.ID)"
-
     else:
         return jsonify({"error": "Invalid metric"}), 400
 
     # =========================
     # FINAL QUERY
     # =========================
-
     query = f"""
-    SELECT {select_sql} AS label, {image_sql} AS ImageURL, {metric_sql} AS value
+    SELECT {select_sql} AS name{extra_fields}, {metric_sql} AS value
     FROM tbl_Scrobble s
     JOIN tbl_Song so ON s.Song_FK = so.ID
     JOIN tbl_Artist a ON so.Artist_FK = a.ID
@@ -103,7 +103,23 @@ def query_builder():
     """
 
     df = pd.read_sql(query, conn, params=[value])
-    return df.to_json(orient="records")
+
+    # =========================
+    # CONVERT TO JSON
+    # =========================
+    results = []
+    for _, row in df.iterrows():
+        item = {
+            "name": row["name"],
+            "value": row["value"]
+        }
+        # Only songs have artist/album extra info
+        if select == "song":
+            item["artist"] = row.get("ArtistName", "")
+            item["album"] = row.get("AlbumName", "")
+        results.append(item)
+
+    return jsonify(results)
 
 # ==============================
 # SPELLING FIXES

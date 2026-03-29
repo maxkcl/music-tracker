@@ -1,69 +1,101 @@
+/* General page styling */
 body {
-    font-family: Arial;
-    background: #121212;
-    color: white;
+    font-family: Arial, sans-serif;
+    background-color: #1e1e1e;
+    color: #ffffff;
     margin: 20px;
 }
 
-/* Controls */
-.controls {
-    margin-bottom: 20px;
-}
-
 /* Toggle button */
-button {
-    padding: 6px 10px;
-    margin: 5px;
+#view-toggle {
+    margin-bottom: 15px;
+}
+
+#toggle-view-btn {
+    padding: 8px 16px;
+    font-size: 14px;
     cursor: pointer;
+    background-color: #444;
+    border: none;
+    color: #fff;
+    border-radius: 4px;
 }
 
-/* CARD CONTAINER */
-#resultsContainer.card-view {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
+#toggle-view-btn:hover {
+    background-color: #555;
 }
 
-/* GRID VIEW */
-#resultsContainer.grid-view {
+/* Grid container */
+#results-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 15px;
 }
 
-/* CARD */
+/* Grid card */
 .card {
-    background: #1e1e1e;
-    border-radius: 10px;
-    padding: 10px;
-    text-align: center;
-    transition: transform 0.2s;
+    background-color: #2a2a2a;
+    padding: 12px;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
 }
 
-.card:hover {
-    transform: scale(1.05);
-}
-
-/* IMAGE */
-.card img {
-    width: 100%;
-    border-radius: 8px;
-}
-
-/* TEXT */
-.card-title {
-    margin-top: 8px;
+.card .rank {
     font-weight: bold;
+    font-size: 14px;
+    margin-bottom: 6px;
+    color: #f1c40f;
 }
 
-.card-value {
-    color: #aaa;
-    font-size: 0.9em;
+.card .name {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 4px;
 }
 
-.card:hover .card-title {
-    color: #1db954;
+.card .details {
+    font-size: 14px;
+    color: #ccc;
+    margin-bottom: 6px;
 }
+
+.card .value {
+    font-weight: bold;
+    color: #1abc9c;
+}
+
+/* List view table */
+#results-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: white;
+}
+
+#results-table th, #results-table td {
+    padding: 10px;
+    text-align: left;
+}
+
+#results-table thead {
+    background: #2a2a2a;
+}
+
+#results-table tbody tr {
+    border-bottom: 1px solid #333;
+}
+
+#results-table tbody tr:hover {
+    background: #2f2f2f;
+}
+
+.rank-col {
+    text-align: center;
+    width: 50px;
+}
+
+/* Name fix container */
 
 #name-fix-container {
     background: #1e1e1e;

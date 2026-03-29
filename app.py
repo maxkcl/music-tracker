@@ -26,59 +26,22 @@ conn, cur = get_connection()
 def index():
     return render_template("index.html")
 
-from flask import Flask, request, jsonify
-import pandas as pd
-
 @app.route("/api/query-builder", methods=["POST"])
 def query_builder():
-    data = request.json
+    from flask import request, jsonify
 
+    data = request.json
     select = data.get("select")
     metric = data.get("metric")
     operator = data.get("operator")
     value = data.get("value")
 
     if not all([select, metric, operator, value is not None]):
-        return jsonify({"error": "Missing required fields"}), 400
+        return jsonify({"error": "Missing required parameters"}), 400
 
-    # =========================
-    # SELECT FIELD MAPPING
-    # =========================
-    select_sql = ""
-    group_sql = ""
-    extra_fields = ""  # for artist/album if needed
-
-    if select == "artist":
-        select_sql = "a.ArtistName"
-        group_sql = "GROUP BY a.ArtistName"
-
-    elif select == "album":
-        select_sql = "al.AlbumName"
-        group_sql = "GROUP BY al.AlbumName"
-
-    elif select == "song":
-        select_sql = "so.SongName"
-        group_sql = "GROUP BY so.SongName, a.ArtistName, al.AlbumName"
-        extra_fields = ", a.ArtistName AS ArtistName, al.AlbumName AS AlbumName"
-
-    elif select == "day":
-        select_sql = "CAST(DatetimePlayed AS DATE)"
-        group_sql = "GROUP BY CAST(DatetimePlayed AS DATE)"
-
-    elif select == "month":
-        select_sql = "FORMAT(DatetimePlayed, 'yyyy-MM')"
-        group_sql = "GROUP BY FORMAT(DatetimePlayed, 'yyyy-MM')"
-
-    elif select == "year":
-        select_sql = "YEAR(DatetimePlayed)"
-        group_sql = "GROUP BY YEAR(DatetimePlayed)"
-
-    else:
-        return jsonify({"error": "Invalid select"}), 400
-
-    # =========================
-    # METRIC MAPPING
-    # =========================
+    # -----------------------------
+    # METRIC SQL
+    # -----------------------------
     if metric == "plays":
         metric_sql = "COUNT(*)"
     elif metric == "songs":
@@ -88,35 +51,101 @@ def query_builder():
     else:
         return jsonify({"error": "Invalid metric"}), 400
 
-    # =========================
-    # FINAL QUERY
-    # =========================
-    query = f"""
-    SELECT {select_sql} AS name{extra_fields}, {metric_sql} AS value
-    FROM tbl_Scrobble s
-    JOIN tbl_Song so ON s.Song_FK = so.ID
-    JOIN tbl_Artist a ON so.Artist_FK = a.ID
-    LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
-    {group_sql}
-    HAVING {metric_sql} {operator} ?
-    ORDER BY value DESC
-    """
+    # -----------------------------
+    # Build SQL query per select type
+    # -----------------------------
+    if select == "song":
+        query = f"""
+        SELECT so.SongName AS name,
+               a.ArtistName AS ArtistName,
+               al.AlbumName AS AlbumName,
+               {metric_sql} AS value
+        FROM tbl_Scrobble s
+        JOIN tbl_Song so ON s.Song_FK = so.ID
+        JOIN tbl_Artist a ON so.Artist_FK = a.ID
+        LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+        GROUP BY so.SongName, a.ArtistName, al.AlbumName
+        HAVING {metric_sql} {operator} ?
+        ORDER BY value DESC
+        """
+    elif select == "album":
+        query = f"""
+        SELECT al.AlbumName AS name,
+               a.ArtistName AS ArtistName,
+               {metric_sql} AS value
+        FROM tbl_Scrobble s
+        JOIN tbl_Song so ON s.Song_FK = so.ID
+        JOIN tbl_Artist a ON so.Artist_FK = a.ID
+        LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+        GROUP BY al.AlbumName, a.ArtistName
+        HAVING {metric_sql} {operator} ?
+        ORDER BY value DESC
+        """
+    elif select == "artist":
+        query = f"""
+        SELECT a.ArtistName AS name,
+               {metric_sql} AS value
+        FROM tbl_Scrobble s
+        JOIN tbl_Song so ON s.Song_FK = so.ID
+        JOIN tbl_Artist a ON so.Artist_FK = a.ID
+        GROUP BY a.ArtistName
+        HAVING {metric_sql} {operator} ?
+        ORDER BY value DESC
+        """
+    elif select == "day":
+        query = f"""
+        SELECT DayDate AS name,
+               NumPlays AS value
+        FROM tbl_Day
+        WHERE NumPlays {operator} ?
+        ORDER BY value DESC
+        """
+    elif select == "month":
+        query = f"""
+        SELECT FORMAT(DayDate, 'yyyy-MM') AS name,
+               SUM(NumPlays) AS value
+        FROM tbl_Day
+        GROUP BY FORMAT(DayDate, 'yyyy-MM')
+        HAVING SUM(NumPlays) {operator} ?
+        ORDER BY value DESC
+        """
+    elif select == "year":
+        query = f"""
+        SELECT YEAR(DayDate) AS name,
+               SUM(NumPlays) AS value
+        FROM tbl_Day
+        GROUP BY YEAR(DayDate)
+        HAVING SUM(NumPlays) {operator} ?
+        ORDER BY value DESC
+        """
+    else:
+        return jsonify({"error": "Invalid select"}), 400
 
-    df = pd.read_sql(query, conn, params=[value])
+    # -----------------------------
+    # Execute query
+    # -----------------------------
+    import pandas as pd
+    try:
+        df = pd.read_sql(query, conn, params=[value])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # =========================
-    # CONVERT TO JSON
-    # =========================
+    # -----------------------------
+    # Map to JS-friendly keys
+    # -----------------------------
     results = []
     for _, row in df.iterrows():
         item = {
-            "name": row["name"],
-            "value": row["value"]
+            "name": str(row.get("name", "")),
+            "value": int(row.get("value", 0))
         }
-        # Only songs have artist/album extra info
+
+        # Add artist/album where applicable
+        if select in ("song", "album"):
+            item["artist"] = str(row.get("ArtistName", ""))
         if select == "song":
-            item["artist"] = row.get("ArtistName", "")
-            item["album"] = row.get("AlbumName", "")
+            item["album"] = str(row.get("AlbumName", ""))
+
         results.append(item)
 
     return jsonify(results)

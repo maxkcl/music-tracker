@@ -49,3 +49,11 @@ Song_FK INT REFERENCES tbl_Song(ID),
 DatetimePlayed DATETIME2,
 UNIQUE(Song_FK, DatetimePlayed)
 )
+
+CREATE TABLE tbl_NameFixes (
+    ID INT IDENTITY(1,1) PRIMARY KEY,
+    Type NVARCHAR(20),        -- 'artist' or 'song'
+    OldName NVARCHAR(255),
+    NewName NVARCHAR(255),
+    ArtistContext NVARCHAR(255) NULL  -- only used for songs
+);

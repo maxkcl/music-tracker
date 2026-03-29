@@ -1,6 +1,7 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, request, jsonify
 import pyodbc
 import pandas as pd
+from db import get_connection
 
 app = Flask(__name__)
 
@@ -14,6 +15,8 @@ conn = pyodbc.connect(
     "DATABASE=DB_MusicTracker;"
     "Trusted_Connection=yes;"
 )
+
+conn, cur = get_connection()
 
 # ==============================
 # ROUTES
@@ -101,6 +104,144 @@ def query_builder():
 
     df = pd.read_sql(query, conn, params=[value])
     return df.to_json(orient="records")
+
+# ==============================
+# SPELLING FIXES
+# ==============================
+
+@app.route("/artists")
+def get_artists():
+    cur.execute("""
+        SELECT ID, ArtistName
+        FROM tbl_Artist
+        ORDER BY ArtistName
+    """)
+
+    rows = cur.fetchall()
+
+    return [{"id": r[0], "name": r[1]} for r in rows]
+
+@app.route("/songs")
+def get_songs():
+    artist_id = request.args.get("artist_id")
+
+    cur.execute("""
+        SELECT SongName
+        FROM tbl_Song
+        WHERE Artist_FK = ?
+        ORDER BY SongName
+    """, artist_id)
+
+    rows = cur.fetchall()
+
+    return jsonify([r[0] for r in rows])
+
+@app.route("/apply_fix", methods=["POST"])
+def apply_fix():
+    data = request.json
+
+    artist_id = int(data.get("artist_id"))
+    song = data.get("song")
+    new_name = data.get("new_name")
+
+    if not artist_id or not new_name:
+        return {"status": "error", "message": "Missing fields"}, 400
+
+    try:
+        # Get artist name
+        cur.execute("SELECT ArtistName FROM tbl_Artist WHERE ID = ?", artist_id)
+        artist_row = cur.fetchone()
+
+        if not artist_row:
+            return {"status": "error", "message": "Artist not found"}
+
+        artist_name = artist_row[0]
+
+        if song:
+            # 🎵 SONG FIX
+
+            # Get current song ID
+            cur.execute("""
+                SELECT ID FROM tbl_Song
+                WHERE SongName = ? AND Artist_FK = ?
+            """, song, artist_id)
+
+            row = cur.fetchone()
+            if not row:
+                return {"status": "error", "message": "Song not found"}
+
+            song_id = row[0]
+
+            # Check for duplicate (case-sensitive, excluding self)
+            cur.execute("""
+                SELECT 1 FROM tbl_Song
+                WHERE SongName COLLATE Latin1_General_CS_AS = ?
+                AND Artist_FK = ?
+                AND ID != ?
+            """, new_name, artist_id, song_id)
+
+            if cur.fetchone():
+                return {"status": "error", "message": "Song with that name already exists"}
+
+            # Safe to update
+            cur.execute("""
+                UPDATE tbl_Song
+                SET SongName = ?
+                WHERE ID = ?
+            """, new_name, song_id)
+
+        else:
+            # 🎤 ARTIST FIX
+
+            # Check if artist exists
+            cur.execute("""
+                SELECT ArtistName FROM tbl_Artist
+                WHERE ID = ?
+            """, artist_id)
+
+            row = cur.fetchone()
+            if not row:
+                return {"status": "error", "message": "Artist not found"}
+
+            old_name = row[0]
+
+            # Case-sensitive duplicate check (exclude current artist)
+            cur.execute("""
+                SELECT 1 FROM tbl_Artist
+                WHERE ArtistName COLLATE Latin1_General_CS_AS = ?
+                AND ID != ?
+            """, new_name, artist_id)
+
+            if cur.fetchone():
+                return {"status": "error", "message": "Artist with that name already exists"}
+
+            # ✅ Update artist name
+            cur.execute("""
+                UPDATE tbl_Artist
+                SET ArtistName = ?
+                WHERE ID = ?
+            """, new_name, artist_id)
+
+            if cur.rowcount == 0:
+                return {"status": "error", "message": "Update failed"}
+
+            # ✅ Save mapping
+            cur.execute("""
+                INSERT INTO tbl_NameFixes (Type, OldName, NewName)
+                VALUES ('artist', ?, ?)
+            """, old_name, new_name)
+
+        conn.commit()
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("❌ APPLY FIX ERROR:", e)
+        conn.rollback()
+        return {"status": "error", "message": str(e)}
+
+# ==============================
+# RUN
+# ==============================
 
 if __name__ == "__main__":
     app.run(debug=True)

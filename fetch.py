@@ -1,6 +1,7 @@
 import requests
-import pyodbc
+import time
 from datetime import datetime
+from db import get_connection
 
 # This script fetches and inserts scrobbling data into the SQL database.
 
@@ -11,63 +12,63 @@ from datetime import datetime
 API_KEY = "71f072d72138772aa0561012523d3e4f"
 USERNAME = "maxkcl"
 
-conn = pyodbc.connect(
-    "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=MKCL\MSSQLSERVER01;"
-    "DATABASE=DB_MusicTracker;"
-    "Trusted_Connection=yes;"
-)
-cur = conn.cursor()
+BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
 # ==============================
-# CACHE
+# DB SETUP
+# ==============================
+
+conn, cur = get_connection()
+cur.fast_executemany = True
+
+# ==============================
+# CACHE (IMPORTANT)
 # ==============================
 
 artist_cache = {}
 album_cache = {}
 song_cache = {}
-
-def preload_cache():
-    print("Preloading cache...")
-
-    cur.execute("SELECT ID, ArtistName FROM tbl_Artist")
-    for row in cur.fetchall():
-        artist_cache[row[1]] = row[0]
-
-    cur.execute("SELECT ID, AlbumName, Artist_FK FROM tbl_Album")
-    for row in cur.fetchall():
-        album_cache[(row[1], row[2])] = row[0]
-
-    cur.execute("SELECT ID, SongName, Artist_FK, Album_FK FROM tbl_Song")
-    for row in cur.fetchall():
-        song_cache[(row[1], row[2], row[3])] = row[0]
-
-    print(f"Cached {len(artist_cache)} artists, {len(album_cache)} albums, {len(song_cache)} songs")
+name_fix_cache = {}
 
 # ==============================
-# DB HELPERS (CACHED)
+# HELPERS
+# ==============================
+
+def get_image(images):
+    for img in images:
+        if img["size"] == "extralarge" and img["#text"]:
+            return img["#text"]
+    return None
+
+# ==============================
+# GET OR CREATE FUNCTIONS
 # ==============================
 
 def get_or_create_artist(name):
+    if not name:
+        return None
+
+    name = name.strip()
+
     if name in artist_cache:
         return artist_cache[name]
 
-    cur.execute("SELECT ID FROM tbl_Artist WHERE ArtistName = ?", name)
+    cur.execute("""
+        SELECT ID
+        FROM tbl_Artist
+        WHERE ArtistName = ?
+    """, name)
+
     row = cur.fetchone()
 
     if row:
         artist_id = row[0]
-
-        # update image if missing
-        if not row[1] and image_url:
-            cur.execute("UPDATE tbl_Artist SET ImageURL = ? WHERE ID = ?", image_url, artist_id)
-
     else:
         cur.execute("""
-            INSERT INTO tbl_Artist (ArtistName, ImageURL)
+            INSERT INTO tbl_Artist (ArtistName)
             OUTPUT INSERTED.ID
-            VALUES (?, ?)
-        """, name, image_url)
+            VALUES (?)
+        """, name)
 
         artist_id = cur.fetchone()[0]
 
@@ -76,32 +77,31 @@ def get_or_create_artist(name):
 
 
 def get_or_create_album(name, artist_id):
+    if not name:
+        return None
+
+    name = name.strip()
     key = (name, artist_id)
 
     if key in album_cache:
         return album_cache[key]
 
     cur.execute("""
-        SELECT ID FROM tbl_Album 
+        SELECT ID
+        FROM tbl_Album
         WHERE AlbumName = ? AND Artist_FK = ?
     """, name, artist_id)
+
     row = cur.fetchone()
 
     if row:
         album_id = row[0]
-
-        if not row[1] and image_url:
-            cur.execute("""
-                UPDATE tbl_Album SET ImageURL = ?
-                WHERE ID = ?
-            """, image_url, album_id)
-
     else:
         cur.execute("""
-            INSERT INTO tbl_Album (AlbumName, Artist_FK, ImageURL)
+            INSERT INTO tbl_Album (AlbumName, Artist_FK)
             OUTPUT INSERTED.ID
-            VALUES (?, ?, ?)
-        """, name, artist_id, image_url)
+            VALUES (?, ?)
+        """, name, artist_id)
 
         album_id = cur.fetchone()[0]
 
@@ -110,15 +110,21 @@ def get_or_create_album(name, artist_id):
 
 
 def get_or_create_song(name, artist_id, album_id):
+    if not name:
+        return None
+
+    name = name.strip()
     key = (name, artist_id, album_id)
 
     if key in song_cache:
         return song_cache[key]
 
     cur.execute("""
-        SELECT ID FROM tbl_Song
+        SELECT ID
+        FROM tbl_Song
         WHERE SongName = ? AND Artist_FK = ? AND Album_FK = ?
     """, name, artist_id, album_id)
+
     row = cur.fetchone()
 
     if row:
@@ -129,93 +135,280 @@ def get_or_create_song(name, artist_id, album_id):
             OUTPUT INSERTED.ID
             VALUES (?, ?, ?)
         """, name, artist_id, album_id)
+
         song_id = cur.fetchone()[0]
 
     song_cache[key] = song_id
     return song_id
 
-
-def scrobble_exists(song_id, timestamp):
+def get_last_timestamp():
     cur.execute("""
-        SELECT 1 FROM tbl_Scrobble
-        WHERE Song_FK = ? AND DatetimePlayed = ?
-    """, song_id, timestamp)
-    return cur.fetchone() is not None
+        SELECT MAX(DatetimePlayed)
+        FROM tbl_Scrobble
+    """)
 
+    row = cur.fetchone()
 
-def insert_scrobble(song_id, timestamp):
+    if row and row[0]:
+        return int(row[0].timestamp())  # convert to UNIX
+    return None
+
+def get_earliest_timestamp():
     cur.execute("""
-        INSERT INTO tbl_Scrobble (Song_FK, DatetimePlayed)
-        VALUES (?, ?)
-    """, song_id, timestamp)
+        SELECT MIN(DatetimePlayed)
+        FROM tbl_Scrobble
+    """)
+
+    row = cur.fetchone()
+
+    if row and row[0]:
+        return int(row[0].timestamp())
+    return None
+
+def flush_batch(batch):
+    if not batch:
+        return
+
+    try:
+        cur.executemany("""
+            INSERT INTO tbl_Scrobble (Song_FK, DatetimePlayed)
+            VALUES (?, ?)
+        """, batch)
+    except Exception as e:
+        # fallback: insert individually to skip duplicates
+        for row in batch:
+            try:
+                cur.execute("""
+                    INSERT INTO tbl_Scrobble (Song_FK, DatetimePlayed)
+                    VALUES (?, ?)
+                """, row)
+            except:
+                pass
+
+    batch.clear()
 
 # ==============================
-# LAST.FM API
+# SPELLING FIXES
 # ==============================
 
-def get_recent_tracks(page=1):
-    url = "http://ws.audioscrobbler.com/2.0/"
-    params = {
-        "method": "user.getRecentTracks",
-        "user": USERNAME,
-        "api_key": API_KEY,
-        "format": "json",
-        "limit": 200,
-        "page": page
-    }
-    return requests.get(url, params=params).json()
+def apply_name_fixes(artist_name, song_name):
+    key = (artist_name, song_name)
+
+    if key in name_fix_cache:
+        return name_fix_cache[key]
+
+    original_artist = artist_name
+    original_song = song_name
+
+    # Artist fix
+    cur.execute("""
+        SELECT NewName FROM tbl_NameFixes
+        WHERE Type = 'artist' AND OldName = ?
+    """, artist_name)
+
+    row = cur.fetchone()
+    if row:
+        artist_name = row[0]
+
+    # Song fix
+    cur.execute("""
+        SELECT NewName FROM tbl_NameFixes
+        WHERE Type = 'song'
+        AND OldName = ?
+        AND (ArtistContext IS NULL OR ArtistContext = ?)
+    """, song_name, artist_name)
+
+    row = cur.fetchone()
+    if row:
+        song_name = row[0]
+
+    name_fix_cache[key] = (artist_name, song_name)
+    return artist_name, song_name
 
 # ==============================
-# MAIN SYNC LOGIC
+# SYNC FUNCTION
 # ==============================
 
 def sync():
-    preload_cache()
+    batch = []
+    BATCH_SIZE = 500
+
+    last_ts = get_last_timestamp()
+    print("Last timestamp:", last_ts)
 
     page = 1
-    total_inserted = 0
-    stop = False
 
-    while not stop:
+    while True:
         print(f"Fetching page {page}...")
-        data = get_recent_tracks(page)
 
-        tracks = data["recenttracks"]["track"]
+        params = {
+            "method": "user.getrecenttracks",
+            "user": USERNAME,
+            "api_key": API_KEY,
+            "format": "json",
+            "limit": 200,
+            "page": page
+        }
 
-        if not tracks:
+        if last_ts:
+            params["from"] = last_ts
+
+        # Request
+        try:
+            response = requests.get(BASE_URL, params=params, timeout=10)
+            data = response.json()
+        except Exception as e:
+            print("❌ Request failed:", e)
             break
 
+        # Handle errors
+        if "error" in data:
+            print(f"❌ Last.fm error {data['error']}: {data['message']}")
+            break
+
+        tracks = data.get("recenttracks", {}).get("track", [])
+
+        if not tracks:
+            print("✅ No new tracks")
+            break
+
+        new_rows = 0
+
         for t in tracks:
-            # Skip "now playing"
-            if "@attr" in t:
+
+            if "@attr" in t and t["@attr"].get("nowplaying"):
                 continue
 
-            artist_name = t["artist"]["#text"]
-            album_name = t["album"]["#text"]
-            track_name = t["name"]
-            timestamp = datetime.fromtimestamp(int(t["date"]["uts"]))
+            try:
+                artist_name = t["artist"]["#text"]
+                song_name = t["name"]
+                album_name = t["album"]["#text"]
+                artist_name, song_name = apply_name_fixes(artist_name, song_name)
+                timestamp = int(t["date"]["uts"])
+            except KeyError:
+                continue
+
+            # 🔥 Stop if we hit old data (extra safety)
+            if last_ts and timestamp <= last_ts:
+                print("🛑 Reached already-synced data")
+                flush_batch(batch)
+                conn.commit()
+                return
+
+            dt = datetime.utcfromtimestamp(timestamp)
 
             artist_id = get_or_create_artist(artist_name)
             album_id = get_or_create_album(album_name, artist_id)
-            song_id = get_or_create_song(track_name, artist_id, album_id)
+            song_id = get_or_create_song(song_name, artist_id, album_id)
 
-            # Incremental stop condition
-            if scrobble_exists(song_id, timestamp):
-                print("Reached existing scrobble. Stopping sync.")
-                stop = True
-                break
+            batch.append((song_id, dt))
+            new_rows += 1
 
-            insert_scrobble(song_id, timestamp)
-            total_inserted += 1
+            if len(batch) >= BATCH_SIZE:
+                flush_batch(batch)
+                conn.commit()
 
-        conn.commit()
+        print(f"Inserted {new_rows} new rows")
+
         page += 1
+        time.sleep(0.25)
 
-    print(f"Done. Inserted {total_inserted} new scrobbles.")
+    flush_batch(batch)
+    conn.commit()
+    print("🎉 Incremental sync complete")
+
+def backfill_older():
+    batch = []
+    BATCH_SIZE = 500
+
+    earliest_ts = get_earliest_timestamp()
+    print("Earliest timestamp:", earliest_ts)
+
+    page = 1
+
+    while True:
+        print(f"Backfilling page {page}...")
+
+        params = {
+            "method": "user.getrecenttracks",
+            "user": USERNAME,
+            "api_key": API_KEY,
+            "format": "json",
+            "limit": 200,
+            "page": page
+        }
+
+        if earliest_ts:
+            params["to"] = earliest_ts
+
+        try:
+            response = requests.get(BASE_URL, params=params, timeout=10)
+            data = response.json()
+        except Exception as e:
+            print("❌ Request failed:", e)
+            break
+
+        if "error" in data:
+            print(f"❌ Last.fm error {data['error']}: {data['message']}")
+            break
+
+        tracks = data.get("recenttracks", {}).get("track", [])
+
+        if not tracks:
+            print("✅ No older tracks left")
+            break
+
+        inserted = 0
+
+        for t in tracks:
+
+            if "@attr" in t and t["@attr"].get("nowplaying"):
+                continue
+
+            try:
+                artist_name = t["artist"]["#text"]
+                song_name = t["name"]
+                album_name = t["album"]["#text"]
+                timestamp = int(t["date"]["uts"])
+            except KeyError:
+                continue
+
+            # 🔥 Stop if we somehow overlap
+            if earliest_ts and timestamp >= earliest_ts:
+                continue
+
+            dt = datetime.utcfromtimestamp(timestamp)
+
+            artist_id = get_or_create_artist(artist_name)
+            album_id = get_or_create_album(album_name, artist_id)
+            song_id = get_or_create_song(song_name, artist_id, album_id)
+
+            batch.append((song_id, dt))
+            inserted += 1
+
+            if len(batch) >= BATCH_SIZE:
+                flush_batch(batch)
+                conn.commit()
+
+        print(f"Inserted {inserted} older rows")
+
+        page += 1
+        time.sleep(0.25)
+
+    flush_batch(batch)
+    conn.commit()
+    print("🎉 Backfill complete")
+
+def full_sync():
+    print("🔼 Running incremental sync...")
+    sync()
+
+    print("🔽 Running backfill...")
+    backfill_older()
 
 # ==============================
 # RUN
 # ==============================
 
 if __name__ == "__main__":
-    sync()
+    full_sync()

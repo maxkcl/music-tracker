@@ -33,12 +33,21 @@ function renderCards(data) {
 
         const card = `
             <div class="card">
-                <img src="${img}">
                 <div class="card-title">${row.label}</div>
                 <div class="card-value">${row.value} plays</div>
                 <div>#${index + 1}</div>
             </div>
         `;
+
+        // With images
+        // const card = `
+        //     <div class="card">
+        //         <img src="${img}">
+        //         <div class="card-title">${row.label}</div>
+        //         <div class="card-value">${row.value} plays</div>
+        //         <div>#${index + 1}</div>
+        //     </div>
+        // `;
 
         container.innerHTML += card;
     });

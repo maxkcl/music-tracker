@@ -64,3 +64,78 @@ button {
 .card:hover .card-title {
     color: #1db954;
 }
+
+#name-fix-container {
+    background: #1e1e1e;
+    padding: 20px;
+    border-radius: 12px;
+    color: white;
+    max-width: 400px;
+}
+
+.form-row {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+input, select {
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+}
+
+button {
+    padding: 10px;
+    border-radius: 8px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+/* Autocomplete dropdown */
+.dropdown {
+    position: absolute;
+    top: 60px;
+    width: 100%;
+    background: white;
+    color: black;
+    border-radius: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.dropdown div {
+    padding: 8px;
+    cursor: pointer;
+}
+
+.dropdown div:hover {
+    background: #ddd;
+}
+
+/* Popup */
+#popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#popup.hidden {
+    display: none;
+}
+
+#popup-content {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    color: black;
+}

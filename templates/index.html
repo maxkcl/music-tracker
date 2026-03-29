@@ -51,10 +51,46 @@
 
 <div id="resultsContainer" class="card-view"></div>
 
-<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+<div id="name-fix-container">
+    <h2>Fix Names</h2>
 
+    <!-- Artist -->
+    <div class="form-row" style="position: relative;">
+        <label>Artist:</label>
+        <input type="text" id="artist-input" placeholder="Search artist...">
+        <div id="artist-dropdown" class="dropdown"></div>
+    </div>
+
+    <!-- Song -->
+    <div class="form-row">
+        <label>Song (optional):</label>
+        <select id="song-select">
+            <option value="">-- Select Song --</option>
+        </select>
+    </div>
+
+    <!-- New Name -->
+    <div class="form-row">
+        <label>New Name:</label>
+        <input type="text" id="new-name" placeholder="Corrected name">
+    </div>
+
+    <!-- Button -->
+    <button id="apply-fix-btn">Apply Fix</button>
+</div>
+
+<!-- Popup Modal -->
+<div id="popup" class="hidden">
+    <div id="popup-content">
+        <p id="popup-message"></p>
+        <button onclick="closePopup()">OK</button>
+    </div>
+</div>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/nameFix.js') }}"></script>
 
 </body>
 </html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Music Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+    <!-- Shared Header -->
+    <header class="app-header">
+        <div class="header-content">
+            <h1 class="app-title">Music Tracker</h1>
+            <nav>
+                <a href="/" class="nav-link">Home</a>
+                <a href="/songlist_page" class="nav-link">Song List</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Page Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

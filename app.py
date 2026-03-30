@@ -285,6 +285,49 @@ def apply_fix():
         return {"status": "error", "message": str(e)}
 
 # ==============================
+# SONG LIST
+# ==============================
+
+@app.route("/songlist_page")
+def songlist_page():
+    return render_template("songlist.html")
+
+@app.route("/api/songlist")
+def get_songlist():
+    import pandas as pd
+
+    query = """
+    SELECT 
+        so.SongName AS name,
+        a.ArtistName AS artist,
+        al.AlbumName AS album,
+        MIN(s.DatetimePlayed) AS first_played,
+        MAX(s.DatetimePlayed) AS last_played,
+        COUNT(*) AS value
+    FROM tbl_Scrobble s
+    JOIN tbl_Song so ON s.Song_FK = so.ID
+    JOIN tbl_Artist a ON so.Artist_FK = a.ID
+    LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+    GROUP BY so.SongName, a.ArtistName, al.AlbumName
+    ORDER BY value DESC
+    """
+
+    df = pd.read_sql(query, conn)
+
+    results = []
+    for _, row in df.iterrows():
+        results.append({
+            "name": str(row["name"]),
+            "artist": str(row["artist"]),
+            "album": str(row["album"]) if row["album"] else "",
+            "first_played": row["first_played"].isoformat() if row["first_played"] else "",
+            "last_played": row["last_played"].isoformat() if row["last_played"] else "",
+            "value": int(row["value"])
+        })
+
+    return jsonify(results)
+
+# ==============================
 # RUN
 # ==============================
 

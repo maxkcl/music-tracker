@@ -51,3 +51,14 @@ WHERE SongName COLLATE Latin1_General_CS_AS = 'Not Who I Used to Be'
 AND Artist_FK = 59
 AND ID != 1650
 
+SELECT DayDate, NumPlays, S.SongName, TopSongPlays, A.ArtistName, TopArtistPlays FROM tbl_Day D
+LEFT JOIN tbl_Song S ON S.ID = D.TopSong_FK
+LEFT JOIN tbl_Artist A ON A.ID = D.TopArtist_FK
+ORDER BY TopArtistPlays DESC
+
+SELECT TOP 50 COUNT(DatetimePlayed) AS [Total Plays], ArtistName AS [Name] FROM tbl_Scrobble S
+LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
+LEFT JOIN tbl_Artist A ON A.ID = So.Artist_FK
+WHERE MONTH(DatetimePlayed) = 12 AND YEAR(DatetimePlayed) = 2020
+GROUP BY Artist_FK, ArtistName
+ORDER BY [Total Plays] DESC

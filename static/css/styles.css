@@ -67,25 +67,33 @@ body {
     color: #eee;
 }
 
-/* Table setup */
-.list-table {
+   /*******************************************************************/
+  /*******************************************************************/
+ /*******************************************************************/
+/* list-table setup */
+/* list-table setup */
+.index-page .list-table,
+.songlist-page .list-table {
     width: 75%;
-    border-collapse: collapse;  /* remove any gaps */
+    border-collapse: collapse;
     table-layout: fixed;
 }
 
-/* Make header row behave like body rows */
-.list-table thead tr {
+/* Header row */
+.index-page .list-table thead tr,
+.songlist-page .list-table thead tr {
     display: flex;
     flex-wrap: wrap;
     background-color: #1e1e1e;
     border-radius: 8px;
     padding: 0.35rem 0.5rem;
     margin-bottom: 6px;
+    text-align: left;
 }
 
 /* Header cells */
-.list-table th {
+.index-page .list-table th,
+.songlist-page .list-table th {
     padding: 0 0.35rem;
     color: #c0d6ff;
     font-size: 0.85rem;
@@ -94,77 +102,60 @@ body {
     border: none;
 }
 
-/* Match column widths EXACTLY with body */
-.list-table th:first-child {
+tbody td:first-child {
+    max-width: 45px;
+    text-align: right;
+}
+
+/* First column */
+.index-page .list-table th:first-child,
+.songlist-page .list-table th:first-child {
     flex: 0 0 35px;
 }
 
-.list-table th:nth-child(2),
-.list-table th:nth-child(3),
-.list-table th:nth-child(4) {
-    flex: 2;
-}
-
-.list-table th:last-child {
+/* Last column */
+.index-page .list-table th:last-child,
+.songlist-page .list-table th:last-child {
     flex: 0 0 50px;
     text-align: right;
     color: #4caf50;
 }
 
-/* Rank column */
-.list-table td:first-child, .list-table th:first-child {
-    flex: 0 0 35px;
-    font-weight: 700;
-}
-
-/* Name / Artist / Album columns */
-.list-table td:nth-child(2), .list-table th:nth-child(2),
-.list-table td:nth-child(3), .list-table th:nth-child(3),
-.list-table td:nth-child(4), .list-table th:nth-child(4),
-.list-table td:nth-child(5), .list-table th:nth-child(5),
-.list-table td:nth-child(6), .list-table th:nth-child(6) {
-    flex: 2;
-    text-align: left;
-}
-
 /* Plays column */
-.list-table td:last-child, .list-table th:last-child {
+.index-page .list-table td:last-child,
+.index-page .list-table th:last-child,
+.songlist-page .list-table td:last-child,
+.songlist-page .list-table th:last-child {
     flex: 0 0 50px;
     color: #4caf50;
     font-weight: 600;
     text-align: right;
 }
 
-/* Table rows (body) */
-.list-table tbody tr {
-    background-color: #1e1e1e;    /* dark grey cards */
+/* Table rows */
+.index-page .list-table tbody tr,
+.songlist-page .list-table tbody tr {
+    background-color: #1e1e1e;
     border-radius: 8px;
-    padding: 0.35rem 0.5rem;      /* compact vertical & horizontal */
-    box-shadow: none;             /* no borders/shadows */
+    padding: 0.35rem 0.5rem;
     display: flex;
     flex-wrap: wrap;
-    margin-bottom: 4px;           /* spacing between rows */
+    margin-bottom: 4px;
     transition: background-color 0.2s;
 }
 
-/* Hover effect */
-.list-table tbody tr:hover {
-    background-color: #2c2c3a;    /* slightly lighter hover */
-}
-
 /* Table cells */
-.list-table td {
+.index-page .list-table td,
+.songlist-page .list-table td {
     padding: 0 0.35rem;
     color: #c0d6ff;
     flex: 1;
     font-size: 0.85rem;
 }
 
-/* Date Tools */
-#dateTools {
-    margin-left: 12.5%;
-}
-
+   /*******************************************************************/
+  /*******************************************************************/
+ /*******************************************************************/
 /* Song List Filter */
 .list-table input::placeholder {
     color: #888;
@@ -175,32 +166,14 @@ body {
     width: 80%;
 }
 
-
-/* Responsive */
-@media (max-width: 900px) {
-    .list-table {
-        width: 95%;
-    }
-    .list-table tbody tr {
-        flex-direction: column;
-        align-items: flex-start;
-        padding: 0.35rem 0.35rem;
-    }
-    .list-table td {
-        padding: 2px 0;
-        flex: unset;
-        width: 100%;
-        text-align: left;
-    }
-    .list-table td:last-child {
-        text-align: left;
-    }
+/* Date Tools */
+#dateTools {
+    margin-left: 12.5%;
 }
 
-
-
-
-
+   /*******************************************************************/
+  /*******************************************************************/
+ /*******************************************************************/
 /* Name fix container */
 
 #name-fix-container {

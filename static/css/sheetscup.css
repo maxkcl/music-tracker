@@ -1,0 +1,97 @@
+/* ===== Container ===== */
+.table-container {
+    width: 100%;
+    overflow-x: auto;
+}
+
+#sheets-cup-results {
+    display: block;
+}
+
+/* ===== Table ===== */
+#sheets-cup-table {
+    width: max-content;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+/* ===== Cells ===== */
+#sheets-cup-table th,
+#sheets-cup-table td {
+    white-space: nowrap;
+    padding: 2px 6px;
+    line-height: 1.2;
+    border: 1px solid #303030;
+    background: #121212;
+}
+
+/* ===== Header ===== */
+#sheets-cup-table thead th {
+    position: sticky;
+    top: 0;
+    background: #1e1e1e;
+    z-index: 3;
+    text-align: center;
+}
+
+/* ===== Rank column (header) ===== */
+#sheets-cup-table th.sticky-rank {
+    position: sticky;
+    left: 0;
+    background: #1e1e1e;
+    z-index: 5;
+    min-width: 35px;
+    max-width: 35px;
+    text-align: center;
+}
+
+/* ===== Rank column (body) ===== */
+#sheets-cup-table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    background: #1e1e1e;
+    z-index: 2;
+    min-width: 35px;
+    max-width: 35px;
+    text-align: center;
+}
+
+/* subtle separation */
+#sheets-cup-table th.sticky-rank,
+#sheets-cup-table tbody td:first-child {
+    box-shadow: 2px 0 6px rgba(0,0,0,0.4);
+}
+
+/* ===== Plays columns (compact) ===== */
+/* columns: 2,4,6,... */
+#sheets-cup-table td:nth-child(2n),
+#sheets-cup-table thead tr:nth-child(2) th:nth-child(odd) {
+    min-width: 35px;
+    max-width: 35px;
+    width: 35px;
+    text-align: right;
+    padding: 2px 4px;
+}
+
+/* ===== Artist columns ===== */
+#sheets-cup-table td:nth-child(2n+1):not(:first-child) {
+    min-width: 120px;
+}
+
+/* ===== Alternating month groups ===== */
+#sheets-cup-table td:nth-child(4n+2),
+#sheets-cup-table td:nth-child(4n+3),
+#sheets-cup-table thead tr:nth-child(2) th:nth-child(4n+1),
+#sheets-cup-table thead tr:nth-child(2) th:nth-child(4n+2) {
+    background: #181818;
+}
+
+/* ===== Hover ===== */
+#sheets-cup-table tbody tr:hover td {
+    background: #222;
+}
+
+/* ===== Top rank emphasis ===== */
+#sheets-cup-table tbody tr:first-child td {
+    font-weight: 600;
+}

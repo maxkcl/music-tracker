@@ -27,6 +27,18 @@ conn, cur = get_connection()
 def index():
     return render_template("index.html")
 
+@app.route("/songlist_page")
+def songlist_page():
+    return render_template("songlist.html")
+
+@app.route("/sheetscup_page")
+def sheetscup_page():
+    return render_template("sheetscup.html")
+
+# ==============================
+# QUERY BUILDER
+# ==============================
+
 @app.route("/api/query-builder", methods=["POST"])
 def query_builder():
     from flask import request, jsonify
@@ -366,10 +378,6 @@ def apply_fix():
 # SONG LIST
 # ==============================
 
-@app.route("/songlist_page")
-def songlist_page():
-    return render_template("songlist.html")
-
 @app.route("/api/songlist")
 def get_songlist():
     import pandas as pd
@@ -425,6 +433,44 @@ def get_songlist():
         })
 
     return jsonify(results)
+
+# ==============================
+# SHEETS CUP
+# ==============================
+
+@app.route("/api/sheetscup")
+def get_sheetscup():
+    import pandas as pd
+
+    query = """
+    WITH MonthlyRanks AS (
+        SELECT 
+            YEAR(s.DatetimePlayed) AS yr,
+            MONTH(s.DatetimePlayed) AS mn,
+            a.ArtistName AS artist,
+            COUNT(*) AS plays,
+            ROW_NUMBER() OVER (
+                PARTITION BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed)
+                ORDER BY COUNT(*) DESC
+            ) AS rn
+        FROM tbl_Scrobble s
+        JOIN tbl_Song so ON so.ID = s.Song_FK
+        JOIN tbl_Artist a ON a.ID = so.Artist_FK
+        WHERE s.DatetimePlayed >= '2020-12-01'
+        GROUP BY 
+            YEAR(s.DatetimePlayed),
+            MONTH(s.DatetimePlayed),
+            a.ArtistName
+    )
+    SELECT yr, mn, artist, plays
+    FROM MonthlyRanks
+    WHERE rn <= 50
+    ORDER BY yr, mn, plays DESC
+    """
+
+    df = pd.read_sql(query, conn)
+
+    return jsonify(df.to_dict(orient="records"))
 
 # ==============================
 # SYNC

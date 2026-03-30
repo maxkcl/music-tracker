@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href = "{{ url_for('static', filename='css/sheetscup.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<h2>Sheets Cup</h2>
+
+<div class="table-container">
+    <div id="sheets-cup-results"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/sheetscup.js') }}"></script>
+{% endblock %}

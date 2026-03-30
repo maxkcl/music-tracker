@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>Music Tracker</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
 
@@ -14,6 +16,7 @@
             <nav>
                 <a href="/" class="nav-link">Home</a>
                 <a href="/songlist_page" class="nav-link">Song List</a>
+                <a href="/sheetscup_page" class="nav-link">Sheets Cup</a>
             </nav>
         </div>
     </header>

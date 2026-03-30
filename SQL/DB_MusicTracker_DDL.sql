@@ -63,8 +63,8 @@ CREATE TABLE tbl_Day
 (
     DayDate DATE PRIMARY KEY,
     NumPlays INT DEFAULT 0,
-    TopSong NVARCHAR(255) NULL,
+    TopSong_FK INT REFERENCES tbl_Song(ID),
     TopSongPlays INT DEFAULT 0,
-    TopArtist NVARCHAR(255) NULL,
+    TopArtist_FK INT REFERENCES tbl_Artist(ID),
     TopArtistPlays INT DEFAULT 0
 );

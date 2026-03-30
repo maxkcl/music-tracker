@@ -2,78 +2,80 @@
 
 {% block content %}
 
-<h2>Query Builder</h2>
-<div id="queryForm">
-    <select id="selectField">
-        <option value="song">Song</option>
-        <option value="album">Album</option>
-        <option value="artist">Artist</option>
-        <option value="day">Day</option>
-        <option value="month">Month</option>
-        <option value="year">Year</option>
-    </select>
-
-    <select id="metric">
-        <option value="plays">Plays</option>
-        <option value="songs">Songs</option>
-        <option value="albums">Albums</option>
-    </select>
-
-    <select id="operator">
-        <option value=">">></option>
-        <option value="<"><</option>
-        <option value="=">=</option>
-    </select>
-
-    <input type="number" id="value" placeholder="Value" />
-    <input type="date" id="startDate" />
-    <input type="date" id="endDate" />
-
-    <button onclick="runQuery()">Run Query</button>
-</div>
-
-<div id="results"></div>
-
-<script src="{{ url_for('static', filename='js/main.js') }}"></script>
-
-<h2>Fix Names</h2>
-<div id="name-fix-container">
-
-    <!-- Artist -->
-    <div class="form-row" style="position: relative;">
-        <label>Artist:</label>
-        <input type="text" id="artist-input" placeholder="Search artist...">
-        <div id="artist-dropdown" class="dropdown"></div>
-    </div>
-
-    <!-- Song -->
-    <div class="form-row">
-        <label>Song (optional):</label>
-        <select id="song-select">
-            <option value="">-- Select Song --</option>
+<div class="index-page">
+    <h2>Query Builder</h2>
+    <div id="queryForm">
+        <select id="selectField">
+            <option value="song">Song</option>
+            <option value="album">Album</option>
+            <option value="artist">Artist</option>
+            <option value="day">Day</option>
+            <option value="month">Month</option>
+            <option value="year">Year</option>
         </select>
+
+        <select id="metric">
+            <option value="plays">Plays</option>
+            <option value="songs">Songs</option>
+            <option value="albums">Albums</option>
+        </select>
+
+        <select id="operator">
+            <option value=">">></option>
+            <option value="<"><</option>
+            <option value="=">=</option>
+        </select>
+
+        <input type="number" id="value" placeholder="Value" />
+        <input type="date" id="startDate" />
+        <input type="date" id="endDate" />
+
+        <button onclick="runQuery()">Run Query</button>
     </div>
 
-    <!-- New Name -->
-    <div class="form-row">
-        <label>New Name:</label>
-        <input type="text" id="new-name" placeholder="Corrected name">
+    <div id="results"></div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    <h2>Fix Names</h2>
+    <div id="name-fix-container">
+
+        <!-- Artist -->
+        <div class="form-row" style="position: relative;">
+            <label>Artist:</label>
+            <input type="text" id="artist-input" placeholder="Search artist...">
+            <div id="artist-dropdown" class="dropdown"></div>
+        </div>
+
+        <!-- Song -->
+        <div class="form-row">
+            <label>Song (optional):</label>
+            <select id="song-select">
+                <option value="">-- Select Song --</option>
+            </select>
+        </div>
+
+        <!-- New Name -->
+        <div class="form-row">
+            <label>New Name:</label>
+            <input type="text" id="new-name" placeholder="Corrected name">
+        </div>
+
+        <!-- Button -->
+        <button id="apply-fix-btn">Apply Fix</button>
     </div>
 
-    <!-- Button -->
-    <button id="apply-fix-btn">Apply Fix</button>
+    <!-- Popup Modal -->
+    <div id="popup" class="hidden">
+        <div id="popup-content">
+            <p id="popup-message"></p>
+            <button onclick="closePopup()">OK</button>
+        </div>
+    </div>
+
+    <h2>Sync Recent Tracks</h2>
+    <button id="sync-btn" style="margin-left: 12.5%">Sync</button>
 </div>
-
-<!-- Popup Modal -->
-<div id="popup" class="hidden">
-    <div id="popup-content">
-        <p id="popup-message"></p>
-        <button onclick="closePopup()">OK</button>
-    </div>
-</div>
-
-<h2>Sync Recent Tracks</h2>
-<button id="sync-btn" style="margin-left: 12.5%">Sync</button>
 
 {% endblock %}
 

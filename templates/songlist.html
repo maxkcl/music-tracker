@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="songlist-page">
+    <h2>Song List</h2>
 
-<h2>Song List</h2>
+    <div id="dateTools">
+        <input type="date" id="startDate" />
+        <input type="date" id="endDate" />
+        <button onclick="loadSongs()">Apply Date Filter</button>
+    </div>
 
-<div id="dateTools">
-    <input type="date" id="startDate" />
-    <input type="date" id="endDate" />
-    <button onclick="loadSongs()">Apply Date Filter</button>
+    <div id="results"></div>
 </div>
-
-<div id="results"></div>
-
 {% endblock %}
 
 {% block scripts %}

@@ -5,13 +5,28 @@
 {% endblock %}
 
 {% block content %}
-
 <h2>Sheets Cup</h2>
+<div id="control-bar" style="display:flex; align-items:center; gap:12px; margin-left: 12.5%; margin-bottom:8px; flex-wrap: wrap;">
 
-<div class="table-container">
-    <div id="sheets-cup-results"></div>
+    <!-- Scroll buttons -->
+    <div style="display:flex; gap:4px; align-items:center;">
+        <button id="scroll-left">«</button>
+        <button id="scroll-right">»</button>
+    </div>
+
+    <!-- Search box -->
+    <input type="text" id="artist-search" placeholder="Search artist..." style="padding:4px 8px; border-radius:6px; border:none; width:160px;">
+
+    <!-- Stats panel -->
+    <div id="artistStats" class="artist-stats hidden">
+        <!-- Stats will be injected here -->
+    </div>
 </div>
-
+<div class="table-container-wrapper">
+    <div class="table-container">
+        <div id="sheets-cup-table"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

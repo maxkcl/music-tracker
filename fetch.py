@@ -1,6 +1,7 @@
 import requests
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from db import get_connection
 
 # This script fetches and inserts scrobbling data into the SQL database.
@@ -34,11 +35,16 @@ name_fix_cache = {}
 # HELPERS
 # ==============================
 
-def get_image(images):
-    for img in images:
-        if img["size"] == "extralarge" and img["#text"]:
-            return img["#text"]
-    return None
+def update_daily_stats():
+    # Load SQL from file
+    with open("SQL/DB_MusicTracker_DML.sql", "r") as f:
+        sql_script = f.read()
+    try:
+        cur.execute(sql_script)
+        conn.commit()
+        print("We did it joe daily stats updated successfully.")
+    except Exception as e:
+        print("Error updating daily stats:", e)
 
 # ==============================
 # GET OR CREATE FUNCTIONS
@@ -150,7 +156,9 @@ def get_last_timestamp():
     row = cur.fetchone()
 
     if row and row[0]:
-        return int(row[0].timestamp())  # convert to UNIX
+        eastern_dt = row[0].replace(tzinfo=ZoneInfo("America/New_York"))
+        utc_dt = eastern_dt.astimezone(ZoneInfo("UTC"))
+        return int(utc_dt.timestamp())  # convert to UNIX
     return None
 
 def get_earliest_timestamp():
@@ -162,7 +170,9 @@ def get_earliest_timestamp():
     row = cur.fetchone()
 
     if row and row[0]:
-        return int(row[0].timestamp())
+        eastern_dt = row[0].replace(tzinfo=ZoneInfo("America/New_York"))
+        utc_dt = eastern_dt.astimezone(ZoneInfo("UTC"))
+        return int(utc_dt.timestamp())
     return None
 
 def flush_batch(batch):
@@ -235,8 +245,53 @@ def sync():
     BATCH_SIZE = 500
     page = 1
 
+    last_ts = get_last_timestamp()
+    print("Last timestamp:", last_ts)
+
+    seen_ts = set()  # track timestamps processed in this sync
+
     while True:
-        # ... fetch page as before ...
+        print(f"Fetching page {page}...")
+
+        params = {
+            "method": "user.getrecenttracks",
+            "user": USERNAME,
+            "api_key": API_KEY,
+            "format": "json",
+            "limit": 200,
+            "page": page
+        }
+
+        if last_ts:
+            params["from"] = last_ts - 5
+
+        # Request
+        try:
+            response = requests.get(BASE_URL, params=params, timeout=10)
+            data = response.json()
+        except Exception as e:
+            print("Request failed:", e)
+            break
+
+        # Handle errors
+        if "error" in data:
+            print(f"Last.fm error {data['error']}: {data['message']}")
+            break
+
+        tracks = data.get("recenttracks", {}).get("track", [])
+
+        if not tracks:
+            print("No new tracks")
+            break
+
+        # Sort by timestamp descending (newest first)
+        valid_tracks = []
+        for t in tracks:
+            if isinstance(t, dict) and "date" in t and "uts" in t["date"]:
+                valid_tracks.append(t)
+        tracks = sorted(valid_tracks, key=lambda x: int(x["date"]["uts"]), reverse=True)
+
+        new_rows = 0
 
         for t in tracks:
             # Skip currently playing
@@ -244,25 +299,43 @@ def sync():
                 continue
 
             try:
-                artist_name = t["artist"]["#text"]
-                song_name = t["name"]
-                album_name = t["album"]["#text"]
                 timestamp = int(t["date"]["uts"])
-                dt = datetime.utcfromtimestamp(timestamp)
+            except (KeyError, TypeError):
+                continue
+
+            # Skip duplicates or already synced
+            if timestamp in seen_ts or (last_ts and timestamp <= last_ts):
+                continue
+
+            seen_ts.add(timestamp)
+
+            try:
+                artist_name = t["artist"]["#text"] if isinstance(t["artist"], dict) else str(t["artist"])
+                song_name = t["name"]
+                album_name = t["album"]["#text"] if isinstance(t["album"], dict) else str(t["album"])
+                artist_name, song_name = apply_name_fixes(artist_name, song_name)
             except KeyError:
                 continue
+
+            dt = datetime.fromtimestamp(timestamp, tz=ZoneInfo("UTC")).astimezone(ZoneInfo("America/New_York")).replace(tzinfo=None)
 
             artist_id = get_or_create_artist(artist_name)
             album_id = get_or_create_album(album_name, artist_id)
             song_id = get_or_create_song(song_name, artist_id, album_id)
 
             batch.append((song_id, dt))
-            affected_dates.add(dt.date())  # track day for tbl_Day
+            new_rows += 1
+            affected_dates.add(dt.date())
 
             if len(batch) >= BATCH_SIZE:
                 flush_batch(batch)
                 conn.commit()
                 batch.clear()
+
+        # If no new rows were added on this page, stop fetching
+        if new_rows == 0:
+            print("Reached already synced data or no valid new tracks")
+            break
 
         page += 1
         time.sleep(0.25)
@@ -272,9 +345,9 @@ def sync():
     conn.commit()
 
     # Update tbl_Day for all affected dates
-    update_daily_stats(conn, affected_dates)
+    update_daily_stats()
 
-    print("🎉 Sync complete")
+    print("Sync complete")
 
 def backfill_older():
     batch = []
@@ -304,23 +377,24 @@ def backfill_older():
             response = requests.get(BASE_URL, params=params, timeout=10)
             data = response.json()
         except Exception as e:
-            print("❌ Request failed:", e)
+            print("Request failed:", e)
             break
 
         if "error" in data:
-            print(f"❌ Last.fm error {data['error']}: {data['message']}")
+            print(f"Last.fm error {data['error']}: {data['message']}")
             break
 
         tracks = data.get("recenttracks", {}).get("track", [])
 
         if not tracks:
-            print("✅ No older tracks left")
+            print("No older tracks left")
             break
 
         inserted = 0
 
         for t in tracks:
-
+            if isinstance(t, str):
+                continue
             if "@attr" in t and t["@attr"].get("nowplaying"):
                 continue
 
@@ -332,7 +406,7 @@ def backfill_older():
             except KeyError:
                 continue
 
-            # 🔥 Stop if we somehow overlap
+            # Stop if we somehow overlap
             if earliest_ts and timestamp >= earliest_ts:
                 continue
 
@@ -356,14 +430,14 @@ def backfill_older():
 
     flush_batch(batch)
     conn.commit()
-    print("🎉 Backfill complete")
+    print("Backfill complete")
 
 def full_sync():
-    print("🔼 Running incremental sync...")
+    print("Running incremental sync...")
     sync()
 
-    print("🔽 Running backfill...")
-    backfill_older()
+    # print("Running backfill...")
+    # backfill_older()
 
 # ==============================
 # RUN

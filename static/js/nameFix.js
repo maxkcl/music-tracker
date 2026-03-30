@@ -5,6 +5,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const songSelect = document.getElementById("song-select");
     const applyBtn = document.getElementById("apply-fix-btn");
 
+    // Sync button
+    const syncBtn = document.getElementById("sync-btn");
+
     let artists = [];
 
     // 🔹 Load all artists once
@@ -120,6 +123,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    syncBtn.addEventListener("click", async () => {
+        const response = await fetch("/run-fetch", { method: "POST" });
+        const data = await response.json();
+        if (data.success) {
+            showPopup("✅ Yeah buddy your scrobs are in")
+        } else {
+            console.log(data.error);
+            showPopup("❌ Sync failed");
+        }
+    });
 });
 
 

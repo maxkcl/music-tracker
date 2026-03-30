@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import pyodbc
 import pandas as pd
+import subprocess
 from db import get_connection
 
 app = Flask(__name__)
@@ -215,25 +216,58 @@ def apply_fix():
             if not row:
                 return {"status": "error", "message": "Song not found"}
 
+            # Find Artist Name
+            cur.execute("""
+                SELECT ArtistName FROM tbl_Artist
+                WHERE ID = ?
+                """, artist_id)
+            artist_context = cur.fetchone()[0]
+
             song_id = row[0]
+            old_name = song
 
             # Check for duplicate (case-sensitive, excluding self)
             cur.execute("""
-                SELECT 1 FROM tbl_Song
+                SELECT ID FROM tbl_Song
                 WHERE SongName COLLATE Latin1_General_CS_AS = ?
                 AND Artist_FK = ?
                 AND ID != ?
             """, new_name, artist_id, song_id)
+            dup = cur.fetchone()
+            if dup:
+                duplicate_id = dup[0]
 
-            if cur.fetchone():
-                return {"status": "error", "message": "Song with that name already exists"}
+                # Merge: update all scrobbles to point to the new name
+                cur.execute("""
+                    UPDATE tbl_Scrobble
+                    SET Song_FK = ?
+                    WHERE Song_FK = ?
+                """, (duplicate_id, song_id))
 
-            # Safe to update
-            cur.execute("""
-                UPDATE tbl_Song
-                SET SongName = ?
-                WHERE ID = ?
-            """, new_name, song_id)
+                # Delete the old song row
+                cur.execute("""
+                    DELETE FROM tbl_Song
+                    WHERE ID = ?
+                """, (song_id,))
+
+                # Save mapping in NameFixes
+                cur.execute("""
+                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext)
+                    VALUES ('song', ?, ?, ?)
+                """, (old_name, new_name, artist_context))
+            else:
+                # Safe to update
+                cur.execute("""
+                    UPDATE tbl_Song
+                    SET SongName = ?
+                    WHERE ID = ?
+                """, new_name, song_id)
+
+                # ✅ Save mapping
+                cur.execute("""
+                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext)
+                    VALUES ('song', ?, ?, ?)
+                """, (old_name, new_name, artist_context))
 
         else:
             # 🎤 ARTIST FIX
@@ -272,8 +306,8 @@ def apply_fix():
 
             # ✅ Save mapping
             cur.execute("""
-                INSERT INTO tbl_NameFixes (Type, OldName, NewName)
-                VALUES ('artist', ?, ?)
+                INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext)
+                VALUES ('artist', ?, ?, NULL)
             """, old_name, new_name)
 
         conn.commit()
@@ -326,6 +360,23 @@ def get_songlist():
         })
 
     return jsonify(results)
+
+# ==============================
+# SYNC
+# ==============================
+
+@app.route('/run-fetch', methods=['POST'])
+def run_fetch():
+    try:
+        result = subprocess.run(
+            ['python', 'fetch.py'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return jsonify({'success': True, 'output': result.stdout})
+    except subprocess.CalledProcessError as e:
+        return jsonify({'success': False, 'error': e.stderr})
 
 # ==============================
 # RUN

@@ -10,17 +10,18 @@ vers     Date        Coder       Issue
 USE DB_MusicTracker
 GO
 
-WITH AllDays AS (
-    SELECT CAST('2020-12-03' AS DATE) As DayDate
-    UNION ALL
-    SELECT DATEADD(DAY, 1, DayDate)
-    FROM AllDays
-    WHERE DayDate < CAST(GETDATE() AS DATE)
-)
-INSERT INTO tbl_Day (DayDate)
-SELECT DayDate
-FROM AllDays
-OPTION (MAXRECURSION 0);
+-- Break in case of fire
+--WITH AllDays AS (
+--    SELECT CAST('2020-12-03' AS DATE) As DayDate
+--    UNION ALL
+--    SELECT DATEADD(DAY, 1, DayDate)
+--    FROM AllDays
+--    WHERE DayDate < CAST(GETDATE() AS DATE)
+--)
+--INSERT INTO tbl_Day (DayDate)
+--SELECT DayDate
+--FROM AllDays
+--OPTION (MAXRECURSION 0);
 
 -- Total plays per day
 UPDATE d

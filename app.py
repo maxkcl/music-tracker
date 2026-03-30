@@ -36,6 +36,8 @@ def query_builder():
     metric = data.get("metric")
     operator = data.get("operator")
     value = data.get("value")
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
 
     if not all([select, metric, operator, value is not None]):
         return jsonify({"error": "Missing required parameters"}), 400
@@ -52,10 +54,38 @@ def query_builder():
     else:
         return jsonify({"error": "Invalid metric"}), 400
 
+    scrobble_params = []
+    day_params = []
+
+    scrobble_date_filter = ""
+    day_date_filter = ""
+
+    if start_date and end_date:
+        scrobble_date_filter = "WHERE s.DatetimePlayed >= ? AND s.DatetimePlayed < DATEADD(DAY, 1, ?)"
+        day_date_filter = "WHERE DayDate BETWEEN ? AND ?"
+
+        scrobble_params.extend([start_date, end_date])
+        day_params.extend([start_date, end_date])
+
+    elif start_date:
+        scrobble_date_filter = "WHERE s.DatetimePlayed >= ?"
+        day_date_filter = "WHERE DayDate >= ?"
+
+        scrobble_params.append(start_date)
+        day_params.append(start_date)
+
+    elif end_date:
+        scrobble_date_filter = "WHERE s.DatetimePlayed < DATEADD(DAY, 1, ?)"
+        day_date_filter = "WHERE DayDate <= ?"
+
+        scrobble_params.append(end_date)
+        day_params.append(end_date)
+
     # -----------------------------
     # Build SQL query per select type
     # -----------------------------
     if select == "song":
+        params = scrobble_params + [value]
         query = f"""
         SELECT so.SongName AS name,
                a.ArtistName AS ArtistName,
@@ -65,11 +95,13 @@ def query_builder():
         JOIN tbl_Song so ON s.Song_FK = so.ID
         JOIN tbl_Artist a ON so.Artist_FK = a.ID
         LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+        {scrobble_date_filter}
         GROUP BY so.SongName, a.ArtistName, al.AlbumName
         HAVING {metric_sql} {operator} ?
         ORDER BY value DESC
         """
     elif select == "album":
+        params = scrobble_params + [value]
         query = f"""
         SELECT al.AlbumName AS name,
                a.ArtistName AS ArtistName,
@@ -78,43 +110,53 @@ def query_builder():
         JOIN tbl_Song so ON s.Song_FK = so.ID
         JOIN tbl_Artist a ON so.Artist_FK = a.ID
         LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+        {scrobble_date_filter}
         GROUP BY al.AlbumName, a.ArtistName
         HAVING {metric_sql} {operator} ?
         ORDER BY value DESC
         """
     elif select == "artist":
+        params = scrobble_params + [value]
         query = f"""
         SELECT a.ArtistName AS name,
                {metric_sql} AS value
         FROM tbl_Scrobble s
         JOIN tbl_Song so ON s.Song_FK = so.ID
         JOIN tbl_Artist a ON so.Artist_FK = a.ID
+        {scrobble_date_filter}
         GROUP BY a.ArtistName
         HAVING {metric_sql} {operator} ?
         ORDER BY value DESC
         """
     elif select == "day":
+        params = day_params + [value]
         query = f"""
         SELECT DayDate AS name,
                NumPlays AS value
         FROM tbl_Day
-        WHERE NumPlays {operator} ?
+        WHERE 1=1
+        {day_date_filter.replace("WHERE", "AND")}
+        AND NumPlays {operator} ?
         ORDER BY value DESC
         """
     elif select == "month":
+        params = day_params + [value]
         query = f"""
         SELECT FORMAT(DayDate, 'yyyy-MM') AS name,
                SUM(NumPlays) AS value
         FROM tbl_Day
+        {day_date_filter}
         GROUP BY FORMAT(DayDate, 'yyyy-MM')
         HAVING SUM(NumPlays) {operator} ?
         ORDER BY value DESC
         """
     elif select == "year":
+        params = day_params + [value]
         query = f"""
         SELECT YEAR(DayDate) AS name,
                SUM(NumPlays) AS value
         FROM tbl_Day
+        {day_date_filter}
         GROUP BY YEAR(DayDate)
         HAVING SUM(NumPlays) {operator} ?
         ORDER BY value DESC
@@ -126,8 +168,10 @@ def query_builder():
     # Execute query
     # -----------------------------
     import pandas as pd
+    print("QUERY:\n", query)
+    print("PARAMS:", params)
     try:
-        df = pd.read_sql(query, conn, params=[value])
+        df = pd.read_sql(query, conn, params=params)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -330,7 +374,27 @@ def songlist_page():
 def get_songlist():
     import pandas as pd
 
-    query = """
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+
+    params = []
+    date_filter = ""
+
+    if start_date and end_date:
+        date_filter = """
+        WHERE s.DatetimePlayed >= ? 
+        AND s.DatetimePlayed < DATEADD(DAY, 1, ?)
+        """
+        params.extend([start_date, end_date])
+    elif start_date:
+        date_filter = "WHERE s.DatetimePlayed >= ?"
+        params.append(start_date)
+
+    elif end_date:
+        date_filter = "WHERE s.DatetimePlayed < DATEADD(DAY, 1, ?)"
+        params.append(end_date)
+
+    query = f"""
     SELECT 
         so.SongName AS name,
         a.ArtistName AS artist,
@@ -342,11 +406,12 @@ def get_songlist():
     JOIN tbl_Song so ON s.Song_FK = so.ID
     JOIN tbl_Artist a ON so.Artist_FK = a.ID
     LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+    {date_filter}
     GROUP BY so.SongName, a.ArtistName, al.AlbumName
     ORDER BY value DESC
     """
 
-    df = pd.read_sql(query, conn)
+    df = pd.read_sql(query, conn, params=params)
 
     results = []
     for _, row in df.iterrows():

@@ -14,18 +14,11 @@ let songFilters = {
     value: { op: ">", val: "" }
 };
 
-document.addEventListener("DOMContentLoaded", async () => {
-    try {
-        const res = await fetch("/api/songlist");
-        const data = await res.json();
-
-        songData = data;
-
-        renderSongTable(data);
-    } catch (err) {
-        console.error("Fetch failed:", err);
-    }
+document.addEventListener("DOMContentLoaded", () => {
+    renderSongTable(); // build once
+    loadSongs();       // fetch + populate
 });
+
 
 function filterSongs(data) {
     return data.filter(item => {
@@ -182,45 +175,92 @@ function createFilterInput(field) {
 function rerenderSongs() {
     const filtered = filterSongs(songData);
     const sorted = sortSongs(filtered, songSort.column, songSort.direction);
-    renderSongTable(sorted);
+
+    // numeric filter
+    const op = songFilters.value.op;
+    const val = parseInt(songFilters.value.val);
+
+    if (!isNaN(val)) {
+        sorted = sorted.filter(song => {
+            if (op === ">") return song.value > val;
+            if (op === "<") return song.value < val;
+            if (op === "=") return song.value === val;
+        });
+    }
+
+    renderSongRows(sorted);
 }
 
-function renderSongTable(data) {
-    const container = document.getElementById("results");
-    container.innerHTML = "";
+// function rerenderSongs() {
+//     const active = document.activeElement;
+//     const activeId = active?.id;
+//     const cursorPos = active?.selectionStart;
 
-    const table = document.createElement("table");
-    table.classList.add("list-table");
+//     const filtered = filterSongs(songData);
+//     const sorted = sortSongs(filtered, songSort.column, songSort.direction);
+//     renderSongTable(sorted);
 
-    const headers = [
-        "Rank",
-        "Song Name",
-        "Artist",
-        "Album",
-        "First Played",
-        "Last Played",
-        "Total Plays"
-    ];
+//     if (activeId) {
+//         const newInput = document.getElementById(activeId);
+//         if (newInput) {
+//             newInput.focus();
+//             if (cursorPos !== null) {
+//                 newInput.setSelectionRange(cursorPos, cursorPos);
+//             }
+//         }
+//     }
+// }
 
+async function loadSongs() {
+    try {
+        const startDate = document.getElementById("startDate")?.value;
+        const endDate = document.getElementById("endDate")?.value;
+
+        const params = new URLSearchParams();
+
+        if (startDate) params.append("start_date", startDate);
+        if (endDate) params.append("end_date", endDate);
+
+        const res = await fetch("/api/songlist?" + params.toString());
+        const data = await res.json();
+
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        songData = data;
+        rerenderSongs();
+
+    } catch (err) {
+        console.error("Fetch failed:", err);
+    }
+}
+
+function renderSongTable() {
     const columnMap = {
-        "Song Name": "name",
+        "Name": "name",
         "Artist": "artist",
         "Album": "album",
         "First Played": "first_played",
         "Last Played": "last_played",
         "Total Plays": "value"
     };
+    
+    const container = document.getElementById("results");
+    container.innerHTML = "";
 
+    const table = document.createElement("table");
+    table.classList.add("list-table");
+
+    // ===== HEADER =====
     const thead = document.createElement("thead");
 
-    // HEADER ROW (sorting)
     const trHead = document.createElement("tr");
-
-    headers.forEach(h => {
+    ["Rank", "Name", "Artist", "Album", "First Played", "Last Played", "Plays"].forEach(h => {
         const th = document.createElement("th");
-        const key = columnMap[h];
-
         th.textContent = h;
+        const key = columnMap[h];
 
         if (key) {
             th.style.cursor = "pointer";
@@ -240,50 +280,155 @@ function renderSongTable(data) {
                 rerenderSongs();
             };
         }
-
         trHead.appendChild(th);
     });
 
-    thead.appendChild(trHead);
-
-    // FILTER ROW
+    // ===== FILTER ROW =====
     const trFilter = document.createElement("tr");
-
-    trFilter.appendChild(document.createElement("th")); // rank
-
+    trFilter.appendChild(document.createElement("th")); // Rank empty
     trFilter.appendChild(createTextFilter("name"));
     trFilter.appendChild(createTextFilter("artist"));
     trFilter.appendChild(createTextFilter("album"));
-
     trFilter.appendChild(createOperatorFilter("first_played"));
     trFilter.appendChild(createOperatorFilter("last_played"));
     trFilter.appendChild(createOperatorFilter("value"));
 
+    thead.appendChild(trHead);
     thead.appendChild(trFilter);
-    table.appendChild(thead);
 
-    // BODY
+    // ===== BODY =====
     const tbody = document.createElement("tbody");
+    tbody.id = "songTableBody";
+
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // initial rows
+    renderSongRows(songData);
+}
+
+function renderSongRows(data) {
+    const tbody = document.getElementById("songTableBody");
+    if (!tbody) return;
+
+    tbody.innerHTML = "";
 
     data.forEach((item, index) => {
         const tr = document.createElement("tr");
 
-        tr.appendChild(td(index + 1));
-        tr.appendChild(td(item.name));
-        tr.appendChild(td(item.artist));
-        tr.appendChild(td(item.album));
-        tr.appendChild(td(formatDateTime(item.first_played)));
-        tr.appendChild(td(formatDateTime(item.last_played)));
-        tr.appendChild(td(item.value));
+        tr.appendChild(tdCell(index + 1));
+        tr.appendChild(tdCell(item.name));
+        tr.appendChild(tdCell(item.artist));
+        tr.appendChild(tdCell(item.album));
+        tr.appendChild(tdCell(formatDateTime(item.first_played)));
+        tr.appendChild(tdCell(formatDateTime(item.last_played)));
+        tr.appendChild(tdCell(item.value));
 
         tbody.appendChild(tr);
     });
-
-    table.appendChild(tbody);
-    container.appendChild(table);
 }
 
-function td(content) {
+// OLD function before fixing select issue
+// function renderSongTable(data) {
+//     const container = document.getElementById("results");
+//     container.innerHTML = "";
+
+//     const table = document.createElement("table");
+//     table.classList.add("list-table");
+
+//     const headers = [
+//         "Rank",
+//         "Song Name",
+//         "Artist",
+//         "Album",
+//         "First Played",
+//         "Last Played",
+//         "Total Plays"
+//     ];
+
+//     const columnMap = {
+//         "Song Name": "name",
+//         "Artist": "artist",
+//         "Album": "album",
+//         "First Played": "first_played",
+//         "Last Played": "last_played",
+//         "Total Plays": "value"
+//     };
+
+//     const thead = document.createElement("thead");
+
+//     // HEADER ROW (sorting)
+//     const trHead = document.createElement("tr");
+
+//     headers.forEach(h => {
+//         const th = document.createElement("th");
+//         const key = columnMap[h];
+
+//         th.textContent = h;
+
+//         if (key) {
+//             th.style.cursor = "pointer";
+
+//             if (songSort.column === key) {
+//                 th.textContent += songSort.direction === "asc" ? " ▲" : " ▼";
+//             }
+
+//             th.onclick = () => {
+//                 if (songSort.column === key) {
+//                     songSort.direction = songSort.direction === "asc" ? "desc" : "asc";
+//                 } else {
+//                     songSort.column = key;
+//                     songSort.direction = "desc";
+//                 }
+
+//                 rerenderSongs();
+//             };
+//         }
+
+//         trHead.appendChild(th);
+//     });
+
+//     thead.appendChild(trHead);
+
+//     // FILTER ROW
+//     const trFilter = document.createElement("tr");
+
+//     trFilter.appendChild(document.createElement("th")); // rank
+
+//     trFilter.appendChild(createTextFilter("name"));
+//     trFilter.appendChild(createTextFilter("artist"));
+//     trFilter.appendChild(createTextFilter("album"));
+
+//     trFilter.appendChild(createOperatorFilter("first_played"));
+//     trFilter.appendChild(createOperatorFilter("last_played"));
+//     trFilter.appendChild(createOperatorFilter("value"));
+
+//     thead.appendChild(trFilter);
+//     table.appendChild(thead);
+
+//     // BODY
+//     const tbody = document.createElement("tbody");
+
+//     data.forEach((item, index) => {
+//         const tr = document.createElement("tr");
+
+//         tr.appendChild(td(index + 1));
+//         tr.appendChild(td(item.name));
+//         tr.appendChild(td(item.artist));
+//         tr.appendChild(td(item.album));
+//         tr.appendChild(td(formatDateTime(item.first_played)));
+//         tr.appendChild(td(formatDateTime(item.last_played)));
+//         tr.appendChild(td(item.value));
+
+//         tbody.appendChild(tr);
+//     });
+
+//     table.appendChild(tbody);
+//     container.appendChild(table);
+// }
+
+function tdCell(content) {
     const cell = document.createElement("td");
     cell.textContent = content ?? "";
     return cell;

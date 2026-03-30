@@ -160,6 +160,11 @@ body {
     font-size: 0.85rem;
 }
 
+/* Date Tools */
+#dateTools {
+    margin-left: 12.5%;
+}
+
 /* Song List Filter */
 .list-table input::placeholder {
     color: #888;

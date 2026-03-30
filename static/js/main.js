@@ -21,6 +21,8 @@ async function runQuery() {
     const metric = document.getElementById("metric").value;
     const operator = document.getElementById("operator").value;
     const valueInput = document.getElementById("value").value;
+    const startDate = document.getElementById("startDate")?.value || null;
+    const endDate = document.getElementById("endDate")?.value || null;
 
     const value = parseInt(valueInput);
     if (isNaN(value)) {
@@ -28,7 +30,14 @@ async function runQuery() {
         return;
     }
 
-    const payload = { select: selectField, metric, operator, value };
+    const payload = { 
+        select: selectField, 
+        metric, 
+        operator, 
+        value,
+        start_date: startDate || null,
+        end_date: endDate || null
+    };
 
     const res = await fetch("/api/query-builder", {
         method: "POST",
@@ -38,9 +47,14 @@ async function runQuery() {
 
     const data = await res.json();
 
+    if (data.error) {
+        alert("Query error: " + data.error);
+        return;
+    }
+
     lastData = data;
     lastSelect = selectField;
-
+    
     renderList(data, selectField);
 }
 

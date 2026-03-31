@@ -28,6 +28,8 @@ SELECT * FROM tbl_Artist
 SELECT * FROM tbl_Album
 SELECT * FROM tbl_Song
 SELECT * FROM tbl_NameFixes
+SELECT * FROM tbl_RedirectSong
+SELECT * FROM tbl_RedirectArtist
 SELECT * FROM tbl_Day
 ORDER BY DayDate DESC
 
@@ -90,3 +92,21 @@ ORDER BY yr, mn, plays DESC;
 
 SELECT * FROM tbl_Song
 WHERE SongName LIKE 'Three Cheers For Five Years'
+
+SELECT S.* FROM tbl_Scrobble S
+LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
+WHERE So.SongName LIKE 'Three Cheers For Five Years'
+
+SELECT OldName, A.ID FROM tbl_NameFixes N
+LEFT JOIN tbl_Artist A ON A.ArtistName = N.NewName
+WHERE A.ID IS NOT NULL
+
+INSERT INTO tbl_RedirectArtist (OldName, Redirect_FK)
+SELECT OldName, A.ID FROM tbl_NameFixes N
+LEFT JOIN tbl_Artist A ON A.ArtistName = N.NewName
+WHERE A.ID IS NOT NULL
+
+INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+SELECT OldName, N.Artist_FK, S.ID FROM tbl_NameFixes N
+LEFT JOIN tbl_Song S ON S.SongName = N.NewName AND S.Artist_FK = N.Artist_FK
+WHERE Type = 'song'

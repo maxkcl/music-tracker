@@ -244,7 +244,6 @@ def apply_fix():
 
     artist_id = int(data.get("artist_id"))
     song = data.get("song")
-
     new_name = data.get("new_name")
 
     if not artist_id or not new_name:
@@ -273,13 +272,6 @@ def apply_fix():
             if not row:
                 return {"status": "error", "message": "Song not found"}
 
-            # Find Artist Name
-            cur.execute("""
-                SELECT ArtistName FROM tbl_Artist
-                WHERE ID = ?
-                """, artist_id)
-            artist_context = cur.fetchone()[0]
-
             song_id = row[0]
             old_name = song
 
@@ -300,6 +292,16 @@ def apply_fix():
                     SET Song_FK = ?
                     WHERE Song_FK = ?
                 """, (duplicate_id, song_id))
+                cur.execute(f"""
+                    UPDATE tbl_Day
+                    SET TopSong_FK = ?
+                    WHERE TopSong_FK = ?
+                """, (duplicate_id, song_id))
+                cur.execute(f"""
+                    UPDATE tbl_RedirectSong
+                    SET Redirect_FK = ?
+                    WHERE Redirect_FK = ?
+                """, (duplicate_id, song_id))
 
                 # Delete the old song row
                 cur.execute("""
@@ -307,11 +309,11 @@ def apply_fix():
                     WHERE ID = ?
                 """, (song_id,))
 
-                # Save mapping in NameFixes
+                # Save mapping in tbl_RedirectSong
                 cur.execute("""
-                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
-                    VALUES ('song', ?, ?, ?)
-                """, (old_name, new_name, artist_id))
+                    INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+                    VALUES (?, ?, ?)
+                """, (old_name, artist_id, duplicate_id))
             else:
                 # Safe to update
                 cur.execute("""
@@ -322,9 +324,9 @@ def apply_fix():
 
                 # ✅ Save mapping
                 cur.execute("""
-                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
-                    VALUES ('song', ?, ?, ?)
-                """, (old_name, new_name, artist_id))
+                    INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+                    VALUES (?, ?, ?)
+                """, (old_name, artist_id, song_id))
 
         else:
             # 🎤 ARTIST FIX
@@ -363,9 +365,9 @@ def apply_fix():
 
             # ✅ Save mapping
             cur.execute("""
-                INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
-                VALUES ('artist', ?, ?, NULL)
-            """, old_name, new_name)
+                INSERT INTO tbl_RedirectArtist (OldName, Redirect_FK)
+                VALUES (?, ?)
+            """, old_name, artist_id)
 
         conn.commit()
         return {"status": "ok"}
@@ -424,83 +426,61 @@ def get_duplicate_details():
 
 @app.route("/api/song-duplicates/merge", methods=["POST"])
 def merge_duplicates():
-    data = request.json
+    data = request.get_json()
 
+    song_name = data.get("song_name")
     artist_id = int(data.get("artist_id"))
-    song = data.get("song")
+    canon_id = int(data.get("canon_id"))
+    song_ids = [int(sid) for sid in data.get("song_ids")]
     
-    new_name = data.get("new_name")
-
-    if not artist_id or not new_name:
-        return {"status": "error", "message": "Missing fields"}, 400
+    if not all([canon_id, song_name, artist_id]):
+        return {"status": "error", "message": "Missing parameters"}, 400
 
     try:
-        # Get artist name
-        cur.execute("SELECT ArtistName FROM tbl_Artist WHERE ID = ?", artist_id)
-        artist_row = cur.fetchone()
+        # Remove canonical ID
+        duplicate_ids = [sid for sid in song_ids if sid != canon_id]
 
-        if not artist_row:
-            return {"status": "error", "message": "Artist not found"}
+        if canon_id in duplicate_ids:
+            return jsonify({"error": "Canonical ID included in delete set"}), 400
 
-        artist_name = artist_row[0]
+        placeholders = ",".join("?" * len(duplicate_ids))
 
-            # Get current song ID
+        # Update ONLY duplicate IDs
+        cur.execute(f"""
+            UPDATE tbl_Scrobble
+            SET Song_FK = ?
+            WHERE Song_FK IN ({placeholders})
+        """, [canon_id] + duplicate_ids)
+        cur.execute(f"""
+            UPDATE tbl_Day
+            SET TopSong_FK = ?
+            WHERE TopSong_FK IN ({placeholders})
+        """, [canon_id] + duplicate_ids)
+        cur.execute(f"""
+            UPDATE tbl_RedirectSong
+            SET Redirect_FK = ?
+            WHERE Redirect_FK IN ({placeholders})
+        """, [canon_id] + duplicate_ids)
+
+        # Delete ONLY those
+        cur.execute(f"""
+            DELETE FROM tbl_Song
+            WHERE ID IN ({placeholders})
+        """, duplicate_ids)
+
+        # Save mapping in tbl_RedirectSong
         cur.execute("""
-            SELECT ID FROM tbl_Song
-            WHERE SongName = ? AND Artist_FK = ?
-        """, song, artist_id)
-
-        row = cur.fetchone()
-        if not row:
-            return {"status": "error", "message": "Song not found"}
-
-        # Find Artist Name
-        cur.execute("""
-            SELECT ArtistName FROM tbl_Artist
-            WHERE ID = ?
-            """, artist_id)
-        artist_context = cur.fetchone()[0]
-
-        song_id = row[0]
-        old_name = song
-
-        # Check for duplicate (case-sensitive, excluding self)
-        cur.execute("""
-            SELECT ID FROM tbl_Song
-            WHERE SongName COLLATE Latin1_General_CS_AS = ?
-            AND Artist_FK = ?
-            AND ID != ?
-        """, new_name, artist_id, song_id)
-        dup = cur.fetchone()
-        if dup:
-            duplicate_id = dup[0]
-
-            # Merge: update all scrobbles to point to the new name
-            cur.execute("""
-                UPDATE tbl_Scrobble
-                SET Song_FK = ?
-                WHERE Song_FK = ?
-            """, (duplicate_id, song_id))
-
-            # Delete the old song row
-            cur.execute("""
-                DELETE FROM tbl_Song
-                WHERE ID = ?
-            """, (song_id,))
-
-            # Save mapping in NameFixes
-            cur.execute("""
-                INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
-                VALUES ('song', ?, ?, ?)
-            """, (old_name, new_name, artist_id))
+            INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+            VALUES (?, ?, ?)
+        """, (song_name, artist_id, canon_id))
 
         conn.commit()
-        return {"status": "ok"}
+        return jsonify({"status": "ok"})
 
     except Exception as e:
         print("❌ APPLY FIX ERROR:", e)
         conn.rollback()
-        return {"status": "error", "message": str(e)}
+        return jsonify({"status": "error", "message": str(e)})
 
 # ==============================
 # SONG LIST

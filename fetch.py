@@ -207,27 +207,35 @@ def apply_name_fixes(artist_name, song_name):
     if key in name_fix_cache:
         return name_fix_cache[key]
 
-    original_artist = artist_name
-    original_song = song_name
+    # Find Artist ID
+    cur.execute("""
+        SELECT ID
+        FROM tbl_Artist
+        WHERE ArtistName = ?
+    """, artist_name)
+    row = cur.fetchone()
+    if row:
+        artist_id = row[0]
 
     # Artist fix
     cur.execute("""
-        SELECT NewName FROM tbl_NameFixes
-        WHERE Type = 'artist' AND OldName = ?
+        SELECT A.ID, ArtistName FROM tbl_RedirectArtist RA
+        LEFT JOIN tbl_Artist A ON A.ID = RA.Redirect_FK
+        WHERE OldName = ?
     """, artist_name)
 
     row = cur.fetchone()
     if row:
-        artist_name = row[0]
+        artist_id = row[0]
+        artist_name = row[1]
 
     # Song fix
     cur.execute("""
-        SELECT NewName FROM tbl_NameFixes N
-        LEFT JOIN tbl_Artist A ON A.ID = N.Artist_FK
-        WHERE Type = 'song'
-        AND OldName = ?
-        AND (A.ArtistName IS NULL OR A.ArtistName = ?)
-    """, song_name, artist_name)
+        SELECT S.SongName FROM tbl_RedirectSong RS
+        LEFT JOIN tbl_Song S ON S.ID = RS.Redirect_FK
+        WHERE OldName = ?
+        AND (RS.Artist_FK IS NULL OR RS.Artist_FK = ?)
+    """, song_name, artist_id)
 
     row = cur.fetchone()
     if row:

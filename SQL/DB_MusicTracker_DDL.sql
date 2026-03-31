@@ -69,3 +69,16 @@ CREATE TABLE tbl_Day
     TopArtist_FK INT REFERENCES tbl_Artist(ID),
     TopArtistPlays INT DEFAULT 0
 );
+
+CREATE TABLE tbl_RedirectArtist (
+    ID INT IDENTITY(1,1) PRIMARY KEY,
+    OldName NVARCHAR(255),
+    Redirect_FK INT REFERENCES tbl_Artist(ID)
+);
+
+CREATE TABLE tbl_RedirectSong (
+    ID INT IDENTITY(1,1) PRIMARY KEY,
+    OldName NVARCHAR(255),
+    Artist_FK INT REFERENCES tbl_Artist(ID),
+    Redirect_FK INT REFERENCES tbl_Song(ID)
+);

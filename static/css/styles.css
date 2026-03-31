@@ -310,3 +310,17 @@ button {
     color: white;
     font-weight: 600;
 }
+
+#mergeBtn {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #4caf50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+#mergeBtn:hover {
+    background: #45a049;
+}

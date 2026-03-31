@@ -152,6 +152,9 @@ function closePopup() {
 let duplicateGroups = [];
 let currentIndex = 0;
 let selectedSongId = null;
+let currentSongName = null;
+let currentArtistId = null;
+let currentSongs = null;
 
 async function openDuplicateViewer() {
     const res = await fetch("/api/song-duplicates");
@@ -170,13 +173,15 @@ async function openDuplicateViewer() {
 
 async function loadDuplicate() {
     const group = duplicateGroups[currentIndex];
+    currentSongName = group.SongName;
+    currentArtistId = group.Artist_FK;
 
     document.getElementById("duplicate-title").textContent =
-        `${group.SongName} — ${group.ArtistName} (${currentIndex + 1}/${duplicateGroups.length})`;
+        `${group.ArtistName} — ${currentSongName} (${currentIndex + 1}/${duplicateGroups.length})`;
 
     const res = await fetch(`/api/song-duplicates/details?song=${encodeURIComponent(group.SongName)}&artist_fk=${group.Artist_FK}`);
     const songs = await res.json();
-
+    console.log(songs);
     renderDuplicateDetails(songs);
 }
 
@@ -210,22 +215,66 @@ function renderDuplicateDetails(songs) {
         selectedSongId = songs[0].ID;
     }
     container.firstChild?.classList.add("selected");
+    currentSongs = songs;
 }
 
 function nextDuplicate() {
     if (currentIndex < duplicateGroups.length - 1) {
         currentIndex++;
-        loadDuplicate();
+    } else {
+        currentIndex = 0;
     }
+    loadDuplicate();
 }
 
 function prevDuplicate() {
     if (currentIndex > 0) {
         currentIndex--;
-        loadDuplicate();
+    } else {
+        currentIndex = duplicateGroups.length - 1
     }
+    loadDuplicate();
 }
 
 function closeDuplicateViewer() {
     document.getElementById("duplicate-modal").classList.add("hidden");
 }
+
+document.getElementById("mergeBtn").onclick = async () => {
+    if (!selectedSongId) {
+        alert("Please select a canonical song");
+        return;
+    }
+
+    // if (!confirm("Merge all duplicates into selected song?")) {
+    //     return;
+    // }
+    try {
+        const res = await fetch("/api/song-duplicates/merge", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                canon_id: selectedSongId,
+                song_name: currentSongName,
+                artist_id: currentArtistId,
+                song_ids: currentSongs.map(s => s.ID)
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        // alert("Merge successful!");
+
+        // 🔄 Reload duplicates list
+        loadDuplicate();
+
+    } catch (err) {
+        console.error("Merge failed:", err);
+        alert("Merge failed");
+    }
+};

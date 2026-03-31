@@ -12,27 +12,27 @@ USE DB_MusicTracker
 GO
 
 -- Break in case of fire
-DROP TABLE tbl_Day
-CREATE TABLE tbl_Day
-(
-    DayDate DATE PRIMARY KEY,
-    NumPlays INT DEFAULT 0,
-    TopSong_FK INT REFERENCES tbl_Song(ID),
-    TopSongPlays INT DEFAULT 0,
-    TopArtist_FK INT REFERENCES tbl_Artist(ID),
-    TopArtistPlays INT DEFAULT 0
-);
-WITH AllDays AS (
-    SELECT CAST('2020-12-03' AS DATE) As DayDate
-    UNION ALL
-    SELECT DATEADD(DAY, 1, DayDate)
-    FROM AllDays
-    WHERE DayDate < CAST(GETDATE() AS DATE)
-)
-INSERT INTO tbl_Day (DayDate)
-SELECT DayDate
-FROM AllDays
-OPTION (MAXRECURSION 0);
+--DROP TABLE tbl_Day
+--CREATE TABLE tbl_Day
+--(
+--    DayDate DATE PRIMARY KEY,
+--    NumPlays INT DEFAULT 0,
+--    TopSong_FK INT REFERENCES tbl_Song(ID),
+--    TopSongPlays INT DEFAULT 0,
+--    TopArtist_FK INT REFERENCES tbl_Artist(ID),
+--    TopArtistPlays INT DEFAULT 0
+--);
+--WITH AllDays AS (
+--    SELECT CAST('2020-12-03' AS DATE) As DayDate
+--    UNION ALL
+--    SELECT DATEADD(DAY, 1, DayDate)
+--    FROM AllDays
+--    WHERE DayDate < CAST(GETDATE() AS DATE)
+--)
+--INSERT INTO tbl_Day (DayDate)
+--SELECT DayDate
+--FROM AllDays
+--OPTION (MAXRECURSION 0);
 
 -- Total plays per day
 UPDATE d

@@ -251,3 +251,62 @@ button {
     border-radius: 10px;
     color: black;
 }
+
+#duplicate-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#duplicate-modal.hidden {
+    display: none;
+}
+
+#duplicate-content {
+    background: #1e1e1e;
+    padding: 20px;
+    border-radius: 10px;
+    color: white;
+
+    width: 800px;          /* fixed width */
+    max-width: 90vw;       /* responsive fallback */
+
+    height: 600px;         /* fixed height */
+    max-height: 90vh;      /* responsive fallback */
+
+    display: flex;
+    flex-direction: column;
+}
+
+/* Make the list scrollable */
+#duplicate-list {
+    flex: 1;
+    overflow-y: auto;
+    margin-top: 10px;
+    border: 1px solid #303030;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.duplicate-row {
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.duplicate-row:hover {
+    background: #2c2c3a;
+}
+
+.duplicate-row.selected {
+    background: #4caf50;
+    color: white;
+    font-weight: 600;
+}

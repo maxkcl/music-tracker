@@ -73,6 +73,22 @@
         </div>
     </div>
 
+    <!-- Duplicate Song Finder -->
+    <button onclick="openDuplicateViewer()" style="margin-left: 12.5%; margin-top: 20px;">Find Duplicate Songs</button>
+    <div id="duplicate-modal" class="hidden">
+    <div id="duplicate-content">
+        <h3 id="duplicate-title"></h3>
+
+        <div id="duplicate-list"></div>
+
+        <div style="margin-top:10px;">
+            <button onclick="prevDuplicate()">Prev</button>
+            <button onclick="nextDuplicate()">Next</button>
+            <button onclick="closeDuplicateViewer()">Close</button>
+        </div>
+    </div>
+</div>
+
     <h2>Sync Recent Tracks</h2>
     <button id="sync-btn" style="margin-left: 12.5%">Sync</button>
 </div>

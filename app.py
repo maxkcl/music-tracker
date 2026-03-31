@@ -244,6 +244,7 @@ def apply_fix():
 
     artist_id = int(data.get("artist_id"))
     song = data.get("song")
+
     new_name = data.get("new_name")
 
     if not artist_id or not new_name:
@@ -308,9 +309,9 @@ def apply_fix():
 
                 # Save mapping in NameFixes
                 cur.execute("""
-                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext)
+                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
                     VALUES ('song', ?, ?, ?)
-                """, (old_name, new_name, artist_context))
+                """, (old_name, new_name, artist_id))
             else:
                 # Safe to update
                 cur.execute("""
@@ -321,9 +322,9 @@ def apply_fix():
 
                 # ✅ Save mapping
                 cur.execute("""
-                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext)
+                    INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
                     VALUES ('song', ?, ?, ?)
-                """, (old_name, new_name, artist_context))
+                """, (old_name, new_name, artist_id))
 
         else:
             # 🎤 ARTIST FIX
@@ -362,9 +363,136 @@ def apply_fix():
 
             # ✅ Save mapping
             cur.execute("""
-                INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext)
+                INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
                 VALUES ('artist', ?, ?, NULL)
             """, old_name, new_name)
+
+        conn.commit()
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("❌ APPLY FIX ERROR:", e)
+        conn.rollback()
+        return {"status": "error", "message": str(e)}
+
+# Song duplicate merger
+@app.route("/api/song-duplicates")
+def get_song_duplicates():
+    import pandas as pd
+
+    query = """
+    SELECT 
+        so.SongName,
+        so.Artist_FK,
+        a.ArtistName,
+        COUNT(s.ID) AS total_plays,
+        COUNT(DISTINCT so.ID) AS versions
+    FROM tbl_Song so
+    JOIN tbl_Artist a ON so.Artist_FK = a.ID
+    LEFT JOIN tbl_Scrobble s ON s.Song_FK = so.ID
+    GROUP BY so.SongName, so.Artist_FK, a.ArtistName
+    HAVING COUNT(DISTINCT so.ID) > 1
+    ORDER BY total_plays DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    return jsonify(df.to_dict(orient="records"))
+
+@app.route("/api/song-duplicates/details")
+def get_duplicate_details():
+    song = request.args.get("song")
+    artist_fk = request.args.get("artist_fk")
+
+    query = """
+    SELECT 
+        so.ID,
+        so.SongName,
+        al.AlbumName,
+        COUNT(s.ID) AS plays
+    FROM tbl_Song so
+    LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
+    LEFT JOIN tbl_Scrobble s ON s.Song_FK = so.ID
+    WHERE so.SongName = ? AND so.Artist_FK = ?
+    GROUP BY so.ID, so.SongName, al.AlbumName
+    ORDER BY plays DESC
+    """
+
+    import pandas as pd
+    df = pd.read_sql(query, conn, params=[song, artist_fk])
+
+    return jsonify(df.to_dict(orient="records"))
+
+@app.route("/api/song-duplicates/merge", methods=["POST"])
+def merge_duplicates():
+    data = request.json
+
+    artist_id = int(data.get("artist_id"))
+    song = data.get("song")
+    
+    new_name = data.get("new_name")
+
+    if not artist_id or not new_name:
+        return {"status": "error", "message": "Missing fields"}, 400
+
+    try:
+        # Get artist name
+        cur.execute("SELECT ArtistName FROM tbl_Artist WHERE ID = ?", artist_id)
+        artist_row = cur.fetchone()
+
+        if not artist_row:
+            return {"status": "error", "message": "Artist not found"}
+
+        artist_name = artist_row[0]
+
+            # Get current song ID
+        cur.execute("""
+            SELECT ID FROM tbl_Song
+            WHERE SongName = ? AND Artist_FK = ?
+        """, song, artist_id)
+
+        row = cur.fetchone()
+        if not row:
+            return {"status": "error", "message": "Song not found"}
+
+        # Find Artist Name
+        cur.execute("""
+            SELECT ArtistName FROM tbl_Artist
+            WHERE ID = ?
+            """, artist_id)
+        artist_context = cur.fetchone()[0]
+
+        song_id = row[0]
+        old_name = song
+
+        # Check for duplicate (case-sensitive, excluding self)
+        cur.execute("""
+            SELECT ID FROM tbl_Song
+            WHERE SongName COLLATE Latin1_General_CS_AS = ?
+            AND Artist_FK = ?
+            AND ID != ?
+        """, new_name, artist_id, song_id)
+        dup = cur.fetchone()
+        if dup:
+            duplicate_id = dup[0]
+
+            # Merge: update all scrobbles to point to the new name
+            cur.execute("""
+                UPDATE tbl_Scrobble
+                SET Song_FK = ?
+                WHERE Song_FK = ?
+            """, (duplicate_id, song_id))
+
+            # Delete the old song row
+            cur.execute("""
+                DELETE FROM tbl_Song
+                WHERE ID = ?
+            """, (song_id,))
+
+            # Save mapping in NameFixes
+            cur.execute("""
+                INSERT INTO tbl_NameFixes (Type, OldName, NewName, Artist_FK)
+                VALUES ('song', ?, ?, ?)
+            """, (old_name, new_name, artist_id))
 
         conn.commit()
         return {"status": "ok"}

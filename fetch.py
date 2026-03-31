@@ -222,10 +222,11 @@ def apply_name_fixes(artist_name, song_name):
 
     # Song fix
     cur.execute("""
-        SELECT NewName FROM tbl_NameFixes
+        SELECT NewName FROM tbl_NameFixes N
+        LEFT JOIN tbl_Artist A ON A.ID = N.Artist_FK
         WHERE Type = 'song'
         AND OldName = ?
-        AND (ArtistContext IS NULL OR ArtistContext = ?)
+        AND (A.ArtistName IS NULL OR A.ArtistName = ?)
     """, song_name, artist_name)
 
     row = cur.fetchone()

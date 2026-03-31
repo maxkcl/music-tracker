@@ -244,7 +244,7 @@ function renderSongTable() {
         "Album": "album",
         "First Played": "first_played",
         "Last Played": "last_played",
-        "Total Plays": "value"
+        "Plays": "value"
     };
     
     const container = document.getElementById("results");

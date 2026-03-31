@@ -145,3 +145,87 @@ function showPopup(message) {
 function closePopup() {
     document.getElementById("popup").classList.add("hidden");
 }
+
+
+
+// DUPLICATE SONG FINDER
+let duplicateGroups = [];
+let currentIndex = 0;
+let selectedSongId = null;
+
+async function openDuplicateViewer() {
+    const res = await fetch("/api/song-duplicates");
+    duplicateGroups = await res.json();
+
+    currentIndex = 0;
+
+    if (!duplicateGroups.length) {
+        alert("No duplicates found");
+        return;
+    }
+
+    document.getElementById("duplicate-modal").classList.remove("hidden");
+    loadDuplicate();
+}
+
+async function loadDuplicate() {
+    const group = duplicateGroups[currentIndex];
+
+    document.getElementById("duplicate-title").textContent =
+        `${group.SongName} — ${group.ArtistName} (${currentIndex + 1}/${duplicateGroups.length})`;
+
+    const res = await fetch(`/api/song-duplicates/details?song=${encodeURIComponent(group.SongName)}&artist_fk=${group.Artist_FK}`);
+    const songs = await res.json();
+
+    renderDuplicateDetails(songs);
+}
+
+function renderDuplicateDetails(songs) {
+    const container = document.getElementById("duplicate-list");
+    container.innerHTML = "";
+
+    selectedSongId = null; // reset selection each time
+
+    songs.forEach(s => {
+        const div = document.createElement("div");
+        div.classList.add("duplicate-row");
+
+        div.textContent = `ID: ${s.ID} | Album: ${s.AlbumName || "None"} | Plays: ${s.plays}`;
+
+        div.onclick = () => {
+            // remove previous selection
+            document.querySelectorAll(".duplicate-row").forEach(el => {
+                el.classList.remove("selected");
+            });
+
+            // select this one
+            div.classList.add("selected");
+            selectedSongId = s.ID;
+        };
+
+        container.appendChild(div);
+    });
+
+    if (songs.length > 0) {
+        selectedSongId = songs[0].ID;
+    }
+    container.firstChild?.classList.add("selected");
+}
+
+function nextDuplicate() {
+    if (currentIndex < duplicateGroups.length - 1) {
+        currentIndex++;
+        loadDuplicate();
+    }
+}
+
+function prevDuplicate() {
+    if (currentIndex > 0) {
+        currentIndex--;
+        loadDuplicate();
+    }
+}
+
+function closeDuplicateViewer() {
+    document.getElementById("duplicate-modal").classList.add("hidden");
+}

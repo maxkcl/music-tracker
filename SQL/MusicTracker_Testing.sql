@@ -62,3 +62,31 @@ LEFT JOIN tbl_Artist A ON A.ID = So.Artist_FK
 WHERE MONTH(DatetimePlayed) = 12 AND YEAR(DatetimePlayed) = 2020
 GROUP BY Artist_FK, ArtistName
 ORDER BY [Total Plays] DESC
+
+WITH MonthlyRanks AS (
+    SELECT 
+        YEAR(s.DatetimePlayed) AS yr,
+        MONTH(s.DatetimePlayed) AS mn,
+        a.ArtistName AS artist,
+        COUNT(*) AS plays,
+        ROW_NUMBER() OVER (
+            PARTITION BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed)
+            ORDER BY COUNT(*) DESC
+        ) AS rn
+    FROM tbl_Scrobble s
+    JOIN tbl_Song so ON so.ID = s.Song_FK
+    JOIN tbl_Artist a ON a.ID = so.Artist_FK
+    WHERE s.DatetimePlayed >= '2020-12-01'
+    GROUP BY 
+        YEAR(s.DatetimePlayed),
+        MONTH(s.DatetimePlayed),
+        a.ArtistName
+)
+
+SELECT *
+FROM MonthlyRanks
+WHERE rn <= 50
+ORDER BY yr, mn, plays DESC;
+
+SELECT * FROM tbl_Song
+WHERE SongName LIKE 'Three Cheers For Five Years'

@@ -20,6 +20,24 @@ html, body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 20px;
+}
+
+.header-left {
+    flex: 1;
+}
+
+.header-centre {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    opacity: 0.85;
+}
+
+.header-right {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
 }
 
 /* Title */
@@ -42,6 +60,27 @@ html, body {
     opacity: 0.7;
 }
 
+/* NOW PLAYING BANNER */
+.now-playing {
+    font-size: 0.9rem;
+    color: #4caf50;
+    white-space: nowrap;
+    animation: pulse 2s infinite;
+}
+
+.now-playing.hidden {
+    display: none;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+   /*******************************************************************/
+  /*******************************************************************/
+ /*******************************************************************/
 /* Query Builder */
 h2 {
     margin-left: 12.5%;
@@ -324,3 +363,4 @@ button {
 #mergeBtn:hover {
     background: #45a049;
 }
+

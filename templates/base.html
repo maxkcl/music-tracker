@@ -12,12 +12,23 @@
     <!-- Shared Header -->
     <header class="app-header">
         <div class="header-content">
-            <h1 class="app-title">Music Tracker</h1>
-            <nav>
-                <a href="/" class="nav-link">Home</a>
-                <a href="/songlist_page" class="nav-link">Song List</a>
-                <a href="/sheetscup_page" class="nav-link">Sheets Cup</a>
-            </nav>
+            <div class="header-left">
+                <h1 class="app-title">Music Tracker</h1>
+            </div>
+
+            <div class="header-centre">
+                <div id="now-playing-banner" class="now-playing hidden">
+                    Not playing
+                </div>
+            </div>
+            
+            <div class="header-right">
+                <nav>
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/songlist_page" class="nav-link">Song List</a>
+                    <a href="/sheetscup_page" class="nav-link">Sheets Cup</a>
+                </nav>
+            </div>
         </div>
     </header>
 
@@ -26,6 +37,7 @@
         {% block content %}{% endblock %}
     </main>
 
+    <script src="{{ url_for('static', filename='js/base.js') }}"></script>
 {% block scripts %}{% endblock %}
 
 </body>

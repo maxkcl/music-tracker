@@ -3,8 +3,14 @@ import pyodbc
 import pandas as pd
 import subprocess
 from db import get_connection
+from fetch import apply_name_fixes
 
 app = Flask(__name__)
+
+API_KEY = "71f072d72138772aa0561012523d3e4f"
+USERNAME = "maxkcl"
+
+BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
 # ==============================
 # DB CONNECTION
@@ -596,6 +602,48 @@ def run_fetch():
         return jsonify({'success': True, 'output': result.stdout})
     except subprocess.CalledProcessError as e:
         return jsonify({'success': False, 'error': e.stderr})
+
+# ==============================
+# NOW PLAYING BANNER
+# ==============================
+
+@app.route("/api/now-playing")
+def now_playing():
+    import requests
+
+    params = {
+        "method": "user.getrecenttracks",
+        "user": USERNAME,
+        "api_key": API_KEY,
+        "format": "json",
+        "limit": 1
+    }
+
+    try:
+        res = requests.get(BASE_URL, params=params, timeout=5)
+        data = res.json()
+
+        track = data.get("recenttracks", {}).get("track", [])
+        if not track:
+            return {"playing": False}
+
+        track = track[0]
+
+        # Check if currently playing
+        if "@attr" in track and track["@attr"].get("nowplaying"):
+            artist_name, song_name = apply_name_fixes(track.get("artist", {}).get("#text"), track.get("name"))
+            return {
+                "playing": True,
+                "song": song_name,
+                "artist": artist_name,
+                "album": track.get("album", {}).get("#text")
+            }
+
+        return {"playing": False}
+
+    except Exception as e:
+        print("Now playing error:", e)
+        return {"playing": False}
 
 # ==============================
 # RUN

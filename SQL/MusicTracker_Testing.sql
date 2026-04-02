@@ -110,3 +110,26 @@ INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
 SELECT OldName, N.Artist_FK, S.ID FROM tbl_NameFixes N
 LEFT JOIN tbl_Song S ON S.SongName = N.NewName AND S.Artist_FK = N.Artist_FK
 WHERE Type = 'song'
+
+SELECT * FROM tbl_Song
+WHERE SongName = 'Safe & Sound'
+AND Artist_FK = 104
+AND ID != 1529
+
+UPDATE S
+SET S.Song_FK = ?
+FROM tbl_Scrobble S
+JOIN tbl_Song SO ON S.Song_FK = S.ID
+WHERE SO.SongName = ?
+AND SO.Artist_FK = ?
+AND SO.ID != ?
+
+SELECT * FROM tbl_Scrobble S
+LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
+WHERE So.SongName = 'OK'
+
+SELECT * FROM tbl_Song
+WHERE ID IN (744,1993,2248)
+
+SELECT * FROM tbl_Day
+WHERE TopSong_FK = 744

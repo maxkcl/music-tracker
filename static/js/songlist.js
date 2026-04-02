@@ -3,6 +3,8 @@ let songSort = {
     direction: "desc"
 };
 
+const headers = ["Rank", "Name", "Artist", "Album", "First Played", "Last Played", "Plays"];
+
 let songData = [];
 
 let songFilters = {
@@ -27,10 +29,18 @@ function filterSongs(data) {
         if (!item.artist.toLowerCase().includes(songFilters.artist)) return false;
         if (!(item.album || "").toLowerCase().includes(songFilters.album)) return false;
 
-        // numeric filter (plays)
+        // // numeric filter (plays)
+        // if (songFilters.value.val !== "") {
+        //     const val = parseInt(songFilters.value.val);
+        //     if (!compare(item.value, val, songFilters.value.op)) return false;
+        // }
+        // numeric filter
         if (songFilters.value.val !== "") {
+            const op = songFilters.value.op;
             const val = parseInt(songFilters.value.val);
-            if (!compare(item.value, val, songFilters.value.op)) return false;
+            if (op === ">" && item.value <= val) return false;
+            if (op === "<" && item.value >= val) return false;
+            if (op === "=" && item.value != val) return false;
         }
 
         // date filters
@@ -176,18 +186,6 @@ function rerenderSongs() {
     const filtered = filterSongs(songData);
     const sorted = sortSongs(filtered, songSort.column, songSort.direction);
 
-    // numeric filter
-    const op = songFilters.value.op;
-    const val = parseInt(songFilters.value.val);
-
-    if (!isNaN(val)) {
-        sorted = sorted.filter(song => {
-            if (op === ">") return song.value > val;
-            if (op === "<") return song.value < val;
-            if (op === "=") return song.value === val;
-        });
-    }
-
     renderSongRows(sorted);
 }
 
@@ -257,19 +255,27 @@ function renderSongTable() {
     const thead = document.createElement("thead");
 
     const trHead = document.createElement("tr");
-    ["Rank", "Name", "Artist", "Album", "First Played", "Last Played", "Plays"].forEach(h => {
+    headers.forEach(h => {
         const th = document.createElement("th");
-        th.textContent = h;
         const key = columnMap[h];
 
         if (key) {
             th.style.cursor = "pointer";
 
+            let arrow = "";
             if (songSort.column === key) {
-                th.textContent += songSort.direction === "asc" ? " ▲" : " ▼";
+                arrow = songSort.direction === "asc" ? " ▲" : " ▼";
             }
+            th.textContent = h;
+            th.dataset.label = h;
+            th.textContent = h + arrow;
 
             th.onclick = () => {
+                const table = th.closest("table");
+                table.querySelectorAll("th").forEach(header => {
+                    const base = header.dataset.label;
+                    if (base) header.textContent = base;
+                });
                 if (songSort.column === key) {
                     songSort.direction = songSort.direction === "asc" ? "desc" : "asc";
                 } else {
@@ -277,8 +283,13 @@ function renderSongTable() {
                     songSort.direction = "desc";
                 }
 
+                const arrow = songSort.direction === "asc" ? " ▲" : " ▼";
+                th.textContent = th.dataset.label + arrow;
+
                 rerenderSongs();
             };
+        } else {
+            th.textContent = h;
         }
         trHead.appendChild(th);
     });

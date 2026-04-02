@@ -108,9 +108,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 showPopup("✅ Fix applied successfully");
 
                 // Optional: clear inputs
-                artistInput.value = "";
-                artistInput.dataset.id = "";
-                songSelect.innerHTML = `<option value="">-- Select Song --</option>`;
+                // artistInput.value = "";
+                // artistInput.dataset.id = "";
+                loadSongs(artistId);
                 document.getElementById("new-name").value = "";
 
             } else {

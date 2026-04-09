@@ -1,3 +1,26 @@
+let nowPlayingInterval = null;
+
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        stopNowPlayingPolling();
+    } else {
+        startNowPlayingPolling();
+    }
+});
+
+function startNowPlayingPolling() {
+    if (nowPlayingInterval) return;
+    updateNowPlaying();
+    nowPlayingInterval = setInterval(updateNowPlaying, 5000);
+}
+
+function stopNowPlayingPolling() {
+    if (nowPlayingInterval) {
+        clearInterval(nowPlayingInterval);
+        nowPlayingInterval = null;
+    }
+}
+
 async function updateNowPlaying() {
     try {
         const res = await fetch("/api/now-playing");
@@ -19,5 +42,4 @@ async function updateNowPlaying() {
     }
 }
 
-setInterval(updateNowPlaying, 5000); // every 5 sec
 updateNowPlaying(); // initial load

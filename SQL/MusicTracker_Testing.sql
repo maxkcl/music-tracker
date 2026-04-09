@@ -35,12 +35,6 @@ ORDER BY DayDate DESC
 
 DELETE FROM tbl_NameFixes
 
-INSERT INTO tbl_NameFixes (Type, OldName, NewName, ArtistContext) VALUES
-('song','Not Who I Used to Be (feat. Joey Fleming)','Not Who I Used to Be','Boys of Fall'),
-('song','Think it over','Think It Over','Mammoth'),
-('artist','Chyl','CHYL',NULL)
-
-
 SELECT MAX(DatetimePlayed) FROM tbl_Scrobble
 
 SELECT * FROM tbl_Scrobble S
@@ -129,7 +123,14 @@ LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
 WHERE So.SongName = 'OK'
 
 SELECT * FROM tbl_Song
-WHERE ID IN (744,1993,2248)
+WHERE SongName LIKE 'One Two Things%'
 
 SELECT * FROM tbl_Day
 WHERE TopSong_FK = 744
+
+DELETE FROM tbl_Big16
+SELECT * FROM tbl_Big16
+ORDER BY Month_FK, Rank
+
+SELECT * FROM tbl_Song
+ORDER BY ID DESC

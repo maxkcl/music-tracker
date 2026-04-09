@@ -78,3 +78,35 @@ SET d.TopArtist_FK = ar.ID,
     d.TopArtistPlays = ar.Plays
 FROM tbl_Day d
 JOIN ArtistRank ar ON d.DayDate = ar.DayDate AND ar.rn = 1;
+
+-- Insert tbl_Month
+--DECLARE @StartDate DATE = '2016-06-01';
+--DECLARE @EndDate   DATE = '2026-03-01';
+
+--WHILE @StartDate <= @EndDate
+--BEGIN
+--    INSERT INTO tbl_Month (MonthDate, Year, Month)
+--    VALUES (
+--        @StartDate,
+--        YEAR(@StartDate),
+--        MONTH(@StartDate)
+--    );
+
+--    SET @StartDate = DATEADD(MONTH, 1, @StartDate);
+--END;
+--SELECT * FROM tbl_Month
+
+-- Big 16 Artist Backfill
+INSERT INTO tbl_Artist (ArtistName, ImageURL)
+VALUES
+('SCNDL', NULL),
+('Aero Chord', NULL),
+('Hot Date!', NULL),
+('KIDS SEE GHOSTS', NULL)
+
+SELECT * FROM tbl_Album A
+LEFT JOIN tbl_Artist Ar ON Ar.ID = A.Artist_FK
+WHERE Ar.ArtistName = 'Stonebank'
+
+INSERT INTO tbl_Song ()
+VALUES

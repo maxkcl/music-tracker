@@ -82,3 +82,25 @@ CREATE TABLE tbl_RedirectSong (
     Artist_FK INT REFERENCES tbl_Artist(ID),
     Redirect_FK INT REFERENCES tbl_Song(ID)
 );
+
+CREATE TABLE tbl_Month (
+    ID INT IDENTITY PRIMARY KEY,
+    MonthDate DATE NOT NULL,  -- e.g. 2024-01-01
+    Year INT NOT NULL,
+    Month INT NOT NULL,
+    UNIQUE (Year, Month)
+);
+
+CREATE TABLE tbl_Big16 (
+    ID INT IDENTITY PRIMARY KEY,
+    Month_FK INT NOT NULL,
+    Song_FK INT NOT NULL,
+    Rank INT NOT NULL CHECK (Rank BETWEEN 1 AND 16),
+    Points INT NOT NULL,
+
+    FOREIGN KEY (Month_FK) REFERENCES tbl_Month(ID),
+    FOREIGN KEY (Song_FK) REFERENCES tbl_Song(ID),
+
+    UNIQUE (Month_FK, Rank),      -- only one song per rank
+    UNIQUE (Month_FK, Song_FK)    -- no duplicates per month
+);

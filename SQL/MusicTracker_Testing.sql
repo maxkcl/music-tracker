@@ -172,3 +172,80 @@ LEFT JOIN Scrobbles SC
     AND SC.M = M.Month
 
 ORDER BY M.MonthDate, B.Rank;
+
+WITH Big16Agg AS (
+        SELECT 
+            Song_FK,
+            SUM(Points) AS TotalPoints,
+            COUNT(*) AS Appearances,
+            COUNT(CASE WHEN Rank = 1 THEN 1 END) AS FirstPlaces,
+            SUM(
+                CASE
+                    WHEN M.MonthDate >= DATEADD(day, -120, GETDATE())
+                    THEN Points ELSE 0
+                END
+            ) AS RecentPoints
+        FROM tbl_Big16
+        LEFT JOIN tbl_Month M ON M.ID = Month_FK
+        GROUP BY Song_FK
+    ),
+    ScrobbleAgg AS (
+        SELECT 
+            Song_FK,
+            COUNT(*) AS TotalScrobbles,
+            SUM(
+                POWER(
+                    0.5,
+                    CAST(DATEDIFF(day, DatetimePlayed, GETDATE()) AS FLOAT) / 365.25
+                )
+            ) AS DecayedScrobbles,
+            SUM(
+                CASE
+                    WHEN DatetimePlayed >= DATEADD(day, -60, GETDATE())
+                    THEN 1 ELSE 0
+                END
+            ) AS RecentScrobbles
+        FROM tbl_Scrobble
+        GROUP BY Song_FK
+    )
+    SELECT
+        s.ID,
+        s.SongName,
+        a.ArtistName,
+        al.AlbumName,
+        ISNULL(b.TotalPoints, 0) AS TotalPoints,
+        ISNULL(b.Appearances, 0) AS Appearances,
+        ISNULL(b.FirstPlaces, 0) AS FirstPlaces,
+        ISNULL(b.RecentPoints, 0) AS RecentPoints,
+        ISNULL(sc.TotalScrobbles, 0) AS TotalScrobbles,
+        ISNULL(sc.DecayedScrobbles, 0) AS DecayedScrobbles,
+        ISNULL(sc.RecentScrobbles, 0) AS RecentScrobbles
+    FROM tbl_Song s
+    LEFT JOIN Big16Agg b ON b.Song_FK = s.ID
+    LEFT JOIN ScrobbleAgg sc ON sc.Song_FK = s.ID
+    LEFT JOIN tbl_Artist a ON a.ID = s.Artist_FK
+    LEFT JOIN tbl_Album al ON al.ID = s.Album_FK
+ORDER BY DecayedScrobbles DESC;
+
+
+SELECT * FROM tbl_SGVSnapshot
+SELECT * FROM tbl_SGVSongs
+
+WITH LatestSnapshot AS (
+        SELECT MAX(ID) AS SnapshotID
+        FROM tbl_SGVSnapshot
+    )
+    SELECT 
+        s.SongName,
+        a.ArtistName,
+        r.Rating,
+        r.TP,
+        r.N1s,
+        r.MIC,
+        r.Plays,
+        r.DecayedPlays
+    FROM tbl_SGVSongs r
+    JOIN LatestSnapshot ls ON r.Snapshot_FK = ls.SnapshotID
+    JOIN tbl_Song s ON s.ID = r.Song_FK
+    JOIN tbl_Artist a ON a.ID = s.Artist_FK
+    WHERE r.N1s > 0

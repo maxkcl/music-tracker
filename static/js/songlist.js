@@ -235,6 +235,31 @@ async function loadSongs() {
     }
 }
 
+async function loadThisMonth() {
+    try {
+        const params = new URLSearchParams();
+        
+        // Find current month
+        var date = new Date();
+        var first_day = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().substring(0, 10);
+        params.append("start_date", first_day);
+
+        const res = await fetch("/api/songlist?" + params.toString());
+        const data = await res.json();
+
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        songData = data;
+        rerenderSongs();
+
+    } catch (err) {
+        console.error("Fetch failed:", err);
+    }
+}
+
 function renderSongTable() {
     const columnMap = {
         "Name": "name",

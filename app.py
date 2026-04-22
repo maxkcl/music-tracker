@@ -45,6 +45,10 @@ def sheetscup_page():
 def big16_page():
     return render_template("big16.html")
 
+@app.route("/sgv_page")
+def sgv_page():
+    return render_template("sgv.html")
+
 # ==============================
 # QUERY BUILDER
 # ==============================
@@ -638,7 +642,206 @@ def get_big16():
 
     return jsonify(df.to_dict(orient="records"))
 
+
+# ==============================
+# SGV
+# ==============================
+@app.route('/api/sgv-build-songs', methods=['GET'])
+def build_song_ratings():
+    """
+    Builds weighted 1–99 song ratings using:
+    - Big16 performance (points, appearances, first places)
+    - Decayed scrobbles (time-weighted popularity)
+    """
+
+    import pandas as pd
+    import numpy as np
+
+    query = """
+    WITH Big16Agg AS (
+            SELECT 
+                Song_FK,
+                SUM(Points) AS TotalPoints,
+                COUNT(*) AS Appearances,
+                COUNT(CASE WHEN Rank = 1 THEN 1 END) AS FirstPlaces,
+                SUM(
+                    CASE
+                        WHEN M.MonthDate >= DATEADD(day, -120, GETDATE())
+                        THEN Points ELSE 0
+                    END
+                ) AS RecentPoints
+            FROM tbl_Big16
+            LEFT JOIN tbl_Month M ON M.ID = Month_FK
+            GROUP BY Song_FK
+        ),
+        ScrobbleAgg AS (
+            SELECT 
+                Song_FK,
+                COUNT(*) AS TotalScrobbles,
+                SUM(
+                    POWER(
+                        0.5,
+                        CAST(DATEDIFF(day, DatetimePlayed, GETDATE()) AS FLOAT) / 365.25
+                    )
+                ) AS DecayedScrobbles,
+                SUM(
+                    CASE
+                        WHEN DatetimePlayed >= DATEADD(day, -60, GETDATE())
+                        THEN 1 ELSE 0
+                    END
+                ) AS RecentScrobbles
+            FROM tbl_Scrobble
+            GROUP BY Song_FK
+        )
+        SELECT
+            s.ID,
+            s.SongName,
+            a.ArtistName,
+            al.AlbumName,
+            ISNULL(b.TotalPoints, 0) AS TotalPoints,
+            ISNULL(b.Appearances, 0) AS Appearances,
+            ISNULL(b.FirstPlaces, 0) AS FirstPlaces,
+            ISNULL(b.RecentPoints, 0) AS RecentPoints,
+            ISNULL(sc.TotalScrobbles, 0) AS TotalScrobbles,
+            ISNULL(sc.DecayedScrobbles, 0) AS DecayedScrobbles,
+            ISNULL(sc.RecentScrobbles, 0) AS RecentScrobbles
+        FROM tbl_Song s
+        LEFT JOIN Big16Agg b ON b.Song_FK = s.ID
+        LEFT JOIN ScrobbleAgg sc ON sc.Song_FK = s.ID
+        LEFT JOIN tbl_Artist a ON a.ID = s.Artist_FK
+        LEFT JOIN tbl_Album al ON al.ID = s.Album_FK
+    """
+
+    df = pd.read_sql(query, conn)
+
+    # ----------------------------
+    # Safe normalization helper
+    # ----------------------------
     
+    def norm(x):
+        return (x - x.min()) / (x.max() - x.min() + 1e-9)
+
+    # ----------------------------
+    # Normalize features
+    # ----------------------------
+
+    df["base"] = np.log1p(df["DecayedScrobbles"])
+
+    df["legacy"] = (
+        df["TotalPoints"] * 0.6 +
+        df["FirstPlaces"] * 2 +
+        np.log1p(df["TotalScrobbles"]) * 0.4
+    )
+
+    df["recency"] = (
+        np.log1p(df["RecentScrobbles"]) * 4.5 +
+        df["RecentPoints"] * 2 +
+        df["FirstPlaces"] * 0.7
+    )
+
+    df["base_n"] = norm(df["base"])
+    df["base_rating"] = 50 + df["base_n"] * 35
+
+    df["legacy_n"] = norm(df["legacy"])
+    df["recency_n"] = norm(df["recency"])
+
+    # ----------------------------
+    # Weighted scoring model
+    # ----------------------------
+    
+    df["score"] = (
+        df["base_rating"] * 0.5 +
+        df["legacy_n"] * 0.9 +
+        df["recency_n"] * 8
+    )
+
+    # ----------------------------
+    # Convert to 1–99 rating
+    # ----------------------------
+
+    df["rating"] = (df["score"] ** 1.2)
+    df["rating"] = df["rating"].clip(1, 99).round().astype(int)
+
+    # ----------------------------
+    # Sort for convenience
+    # ----------------------------
+    df = df.sort_values("rating", ascending=False)
+
+    return df
+
+@app.route("/api/sgv-update-ratings", methods=["POST"])
+def sgv_update_ratings():
+    try:
+        df = build_song_ratings()
+
+        # ----------------------------
+        # Create snapshot row
+        # ----------------------------
+
+        cur.execute("INSERT INTO tbl_SGVSnapshot DEFAULT VALUES")
+        conn.commit()
+
+        snapshot_id = cur.execute("SELECT SCOPE_IDENTITY()").fetchone()[0]
+
+        # ----------------------------
+        # Insert song data
+        # ----------------------------
+
+        rows = [
+            (
+                snapshot_id,
+                int(row.ID),
+                int(row.rating),
+                int(row.TotalPoints),
+                int(row.FirstPlaces),
+                int(row.Appearances),
+                int(row.TotalScrobbles),
+                int(row.DecayedScrobbles),
+                float(row.base_rating),
+                float(row.legacy_n),
+                float(row.recency_n)
+            )
+            for _, row in df.iterrows()
+        ]
+
+        cur.executemany("""
+            INSERT INTO tbl_SGVSongs
+            (Snapshot_FK, Song_FK, Rating, TP, N1s, MIC, Plays, DecayedPlays, BaseRating, LegacyScore, RecencyScore)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
+
+        conn.commit()
+
+        return jsonify({"status": "success", "snapshot_id": snapshot_id})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/sgv-get-ratings")
+def get_latest_ratings():
+    query = """
+    WITH LatestSnapshot AS (
+        SELECT MAX(ID) AS SnapshotID
+        FROM tbl_SGVSnapshot
+    )
+    SELECT 
+        s.SongName,
+        a.ArtistName,
+        r.Rating,
+        r.TP,
+        r.N1s,
+        r.MIC,
+        r.Plays,
+        r.DecayedPlays
+    FROM tbl_SGVSongs r
+    JOIN LatestSnapshot ls ON r.Snapshot_FK = ls.SnapshotID
+    JOIN tbl_Song s ON s.ID = r.Song_FK
+    JOIN tbl_Artist a ON a.ID = s.Artist_FK
+    ORDER BY r.Rating DESC
+    """
+
+    df = pd.read_sql(query, conn)
+    return jsonify(df.to_dict(orient="records"))
 
 # ==============================
 # SYNC

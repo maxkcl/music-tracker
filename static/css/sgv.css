@@ -1,0 +1,70 @@
+.sgv-table-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 10%;
+    margin-right: 2%;
+}
+
+#sgv-table {
+    display: block;
+}
+
+/* ===== Table ===== */
+#sgv-table {
+    width: max-content;
+    border-collapse: collapse;
+    font-size: 12px;
+    padding-left: 12.5%;
+}
+
+/* ===== Cells ===== */
+#sgv-table th,
+#sgv-table td {
+    white-space: nowrap;
+    padding: 5px 10px;
+    border: 1px solid #303030;
+    background: #121212;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ===== Header ===== */
+#sgv-table thead th {
+    position: sticky;
+    top: 0;
+    background: #1e1e1e;
+    z-index: 3;
+    text-align: center;
+}
+
+/* ===== Song Name Column ===== */
+#sgv-table tbody td:nth-child(2) {
+    position: sticky;
+    left: 0;
+    background: #1e1e1e;
+    z-index: 2;
+    min-width: 100px;
+    max-width: 200px;
+    text-align: left;
+}
+
+/* ===== Artist Name Column ===== */
+#sgv-table tbody td:nth-child(3) {
+    max-width: 120px;
+}
+
+/* subtle separation */
+#sgv-table th.sticky-rank,
+#sgv-table tbody td:first-child {
+    box-shadow: 2px 0 3px rgba(0,0,0,0.4);
+}
+
+/* ===== Hover ===== */
+#sgv-table tbody tr:hover td {
+    background: #222;
+}
+
+#sgv-buttons {
+    margin-left: 12.5%;
+    padding-bottom: 10px;
+}

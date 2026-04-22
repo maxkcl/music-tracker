@@ -378,7 +378,6 @@ button {
 }
 
 .big16 th, .big16 td {
-    border: 1px solid #ccc;
     padding: 6px 8px;
     text-align: left;
 }
@@ -393,7 +392,7 @@ button {
 .big16 td:first-child {
     position: sticky;
     left: 0;
-    background: rgb(44, 44, 44);
+    background: #242424;
     z-index: 2;
 }
 
@@ -411,7 +410,7 @@ button {
 }
 
 .big16 thead tr:first-child th {
-    border-bottom: 2px solid #999;
+    border: 2px solid #999;
     font-weight: bold;
 }
 
@@ -459,4 +458,49 @@ button {
     max-width: 400px;
     white-space: nowrap;
     overflow: hidden;
+}
+
+/* Remove borders BETWEEN Plays ↔ Song and Song ↔ Artist */
+.big16 td:nth-child(3n+3),
+.big16 th:nth-child(3n+3),
+.big16 td:nth-child(3n+4),
+.big16 th:nth-child(3n+4) {
+    border: none;
+}
+
+/* Rank column (right border) */
+.big16 th:nth-child(1),
+.big16 td:nth-child(1) {
+    border-right: 2px solid #999;
+}
+
+/* LEFT edge of each month block (Plays column) */
+.big16 th:nth-child(3n+2),
+.big16 td:nth-child(3n+2) {
+    border-left: 2px solid #999;
+}
+
+/* RIGHT edge of each month block (Artist column) */
+.big16 th:nth-child(3n+4),
+.big16 td:nth-child(3n+4) {
+    border-right: 2px solid #999;
+}
+
+/* Second header row (no Rank column) */
+.big16 thead tr:nth-child(2) th:nth-child(3n+1) {
+    border-left: 2px solid #999;
+    border-right: none;
+}
+
+.big16 thead tr:nth-child(2) th:nth-child(3n+2) {
+    border-left: none;
+}
+
+.big16 thead tr:nth-child(2) th:nth-child(3n+3) {
+    border-right: 2px solid #999;
+}
+
+/* Gold Rank 1*/
+.big16 tbody tr:first-child td:first-child {
+    background-color: rgb(175, 163, 91);
 }

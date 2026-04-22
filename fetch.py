@@ -203,10 +203,11 @@ def flush_batch(batch):
 
 def apply_name_fixes(artist_name, song_name):
     key = (artist_name, song_name)
+    artist_id = None
 
     if key in name_fix_cache:
         return name_fix_cache[key]
-
+    
     # Find Artist ID
     cur.execute("""
         SELECT ID
@@ -216,7 +217,8 @@ def apply_name_fixes(artist_name, song_name):
     row = cur.fetchone()
     if row:
         artist_id = row[0]
-
+    
+    
     # Artist fix
     cur.execute("""
         SELECT A.ID, ArtistName FROM tbl_RedirectArtist RA
@@ -228,7 +230,7 @@ def apply_name_fixes(artist_name, song_name):
     if row:
         artist_id = row[0]
         artist_name = row[1]
-
+    
     # Song fix
     cur.execute("""
         SELECT S.SongName FROM tbl_RedirectSong RS
@@ -236,7 +238,7 @@ def apply_name_fixes(artist_name, song_name):
         WHERE OldName = ?
         AND (RS.Artist_FK IS NULL OR RS.Artist_FK = ?)
     """, song_name, artist_id)
-
+    print(artist_id)
     row = cur.fetchone()
     if row:
         song_name = row[0]

@@ -364,3 +364,99 @@ button {
     background: #45a049;
 }
 
+/* BIG 16 */
+
+#big16-table-wrapper {
+    overflow-x: auto;
+    position: relative;
+}
+
+.big16 {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+}
+
+.big16 th, .big16 td {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    text-align: left;
+}
+
+.big16 th {
+    text-align: center;
+    background: #242424;
+}
+
+/* Sticky first column */
+.big16 th:first-child,
+.big16 td:first-child {
+    position: sticky;
+    left: 0;
+    background: rgb(44, 44, 44);
+    z-index: 2;
+}
+
+.big16 thead tr:nth-child(2) th {
+    position: static;
+}
+
+.big16 thead th {
+    z-index: 3;
+}
+
+/* Optional: subtle shadow divider */
+.big16 td:first-child {
+    box-shadow: 2px 0 4px rgba(0,0,0,0.1);
+}
+
+.big16 thead tr:first-child th {
+    border-bottom: 2px solid #999;
+    font-weight: bold;
+}
+
+.big16 thead tr:nth-child(2) th {
+    font-weight: normal;
+    font-size: 12px;
+}
+
+.big16 td:nth-child(3n+2),
+.big16 th:nth-child(3n+2) {
+    border-left: 2px solid #ccc;
+}
+
+.big16 td,
+.big16 th {
+    white-space: nowrap;
+}
+
+.big16 td {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* Plays columns */
+.big16 td:nth-child(3n+2) {
+    max-width: 60px;
+    text-align: center;
+}
+
+/* Song columns */
+.big16 td:nth-child(3n+3) {
+    max-width: 200px;
+}
+
+/* Artist columns */
+.big16 td:nth-child(3n+4) {
+    max-width: 160px;
+}
+
+.big16 td.expanded {
+    white-space: normal;
+    max-width: 400px;
+    white-space: nowrap;
+    overflow: hidden;
+}

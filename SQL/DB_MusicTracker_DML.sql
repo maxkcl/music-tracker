@@ -22,17 +22,19 @@ GO
 --    TopArtist_FK INT REFERENCES tbl_Artist(ID),
 --    TopArtistPlays INT DEFAULT 0
 --);
---WITH AllDays AS (
---    SELECT CAST('2020-12-03' AS DATE) As DayDate
---    UNION ALL
---    SELECT DATEADD(DAY, 1, DayDate)
---    FROM AllDays
---    WHERE DayDate < CAST(GETDATE() AS DATE)
---)
---INSERT INTO tbl_Day (DayDate)
---SELECT DayDate
---FROM AllDays
---OPTION (MAXRECURSION 0);
+DELETE FROM tbl_Day;
+
+WITH AllDays AS (
+    SELECT CAST('2020-12-03' AS DATE) As DayDate
+    UNION ALL
+    SELECT DATEADD(DAY, 1, DayDate)
+    FROM AllDays
+    WHERE DayDate < CAST(GETDATE() AS DATE)
+)
+INSERT INTO tbl_Day (DayDate)
+SELECT DayDate
+FROM AllDays
+OPTION (MAXRECURSION 0);
 
 -- Total plays per day
 UPDATE d
@@ -79,6 +81,11 @@ SET d.TopArtist_FK = ar.ID,
 FROM tbl_Day d
 JOIN ArtistRank ar ON d.DayDate = ar.DayDate AND ar.rn = 1;
 
+SELECT * FROM tbl_Day
+ORDER BY DayDate DESC
+SELECT * FROM tbl_Month
+SELECT * FROM tbl_Big16
+
 -- Insert tbl_Month
 --DECLARE @StartDate DATE = '2016-06-01';
 --DECLARE @EndDate   DATE = '2026-03-01';
@@ -97,16 +104,16 @@ JOIN ArtistRank ar ON d.DayDate = ar.DayDate AND ar.rn = 1;
 --SELECT * FROM tbl_Month
 
 -- Big 16 Artist Backfill
-INSERT INTO tbl_Artist (ArtistName, ImageURL)
-VALUES
-('SCNDL', NULL),
-('Aero Chord', NULL),
-('Hot Date!', NULL),
-('KIDS SEE GHOSTS', NULL)
+--INSERT INTO tbl_Artist (ArtistName, ImageURL)
+--VALUES
+--('SCNDL', NULL),
+--('Aero Chord', NULL),
+--('Hot Date!', NULL),
+--('KIDS SEE GHOSTS', NULL)
 
-SELECT * FROM tbl_Album A
-LEFT JOIN tbl_Artist Ar ON Ar.ID = A.Artist_FK
-WHERE Ar.ArtistName = 'Stonebank'
+--SELECT * FROM tbl_Album A
+--LEFT JOIN tbl_Artist Ar ON Ar.ID = A.Artist_FK
+--WHERE Ar.ArtistName = 'Stonebank'
 
-INSERT INTO tbl_Song ()
-VALUES
+--INSERT INTO tbl_Song ()
+--VALUES

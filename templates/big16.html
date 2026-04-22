@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="big16-page">
+    <h2>Big 16</h2>
+    <div id="big16-table-wrapper">
+        <div id="big16-table"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/big16.js') }}"></script>
+{% endblock %}

@@ -23,17 +23,19 @@ ORDER BY SongName
 
 SELECT * FROM tbl_Scrobble S
 LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
-WHERE So.SongName = 'Distance'
+ORDER BY DatetimePlayed DESC
 SELECT * FROM tbl_Artist
 SELECT * FROM tbl_Album
 SELECT * FROM tbl_Song
 SELECT * FROM tbl_NameFixes
 SELECT * FROM tbl_RedirectSong
 SELECT * FROM tbl_RedirectArtist
-SELECT * FROM tbl_Day
+SELECT D.*, S.SongName, A.ArtistName FROM tbl_Day D
+LEFT JOIN tbl_Song S ON S.ID = D.TopSong_FK
+LEFT JOIN tbl_Artist A ON A.ID = D.TopArtist_FK
 ORDER BY DayDate DESC
 
-DELETE FROM tbl_NameFixes
+--DELETE FROM tbl_NameFixes
 
 SELECT MAX(DatetimePlayed) FROM tbl_Scrobble
 
@@ -95,15 +97,15 @@ SELECT OldName, A.ID FROM tbl_NameFixes N
 LEFT JOIN tbl_Artist A ON A.ArtistName = N.NewName
 WHERE A.ID IS NOT NULL
 
-INSERT INTO tbl_RedirectArtist (OldName, Redirect_FK)
-SELECT OldName, A.ID FROM tbl_NameFixes N
-LEFT JOIN tbl_Artist A ON A.ArtistName = N.NewName
-WHERE A.ID IS NOT NULL
+--INSERT INTO tbl_RedirectArtist (OldName, Redirect_FK)
+--SELECT OldName, A.ID FROM tbl_NameFixes N
+--LEFT JOIN tbl_Artist A ON A.ArtistName = N.NewName
+--WHERE A.ID IS NOT NULL
 
-INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
-SELECT OldName, N.Artist_FK, S.ID FROM tbl_NameFixes N
-LEFT JOIN tbl_Song S ON S.SongName = N.NewName AND S.Artist_FK = N.Artist_FK
-WHERE Type = 'song'
+--INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+--SELECT OldName, N.Artist_FK, S.ID FROM tbl_NameFixes N
+--LEFT JOIN tbl_Song S ON S.SongName = N.NewName AND S.Artist_FK = N.Artist_FK
+--WHERE Type = 'song'
 
 SELECT * FROM tbl_Song
 WHERE SongName = 'Safe & Sound'
@@ -128,9 +130,45 @@ WHERE SongName LIKE 'One Two Things%'
 SELECT * FROM tbl_Day
 WHERE TopSong_FK = 744
 
-DELETE FROM tbl_Big16
-SELECT * FROM tbl_Big16
-ORDER BY Month_FK, Rank
+--DELETE FROM tbl_Big16
+--SELECT * FROM tbl_Big16
+--ORDER BY Month_FK, Rank
 
 SELECT * FROM tbl_Song
 ORDER BY ID DESC
+
+WITH Scrobbles AS (
+    SELECT 
+        Song_FK,
+        YEAR(DatetimePlayed) AS Y,
+        MONTH(DatetimePlayed) AS M,
+        COUNT(*) AS ScrobbleCount
+    FROM tbl_Scrobble
+    GROUP BY 
+        Song_FK,
+        YEAR(DatetimePlayed),
+        MONTH(DatetimePlayed)
+)
+
+SELECT 
+    B.Rank,
+    ISNULL(SC.ScrobbleCount, 0) AS Plays,
+    S.SongName,
+    A.ArtistName,
+    M.MonthDate,
+    M.Year,
+    M.Month,
+    S.ID,
+    A.ID
+
+FROM tbl_Big16 B
+JOIN tbl_Month M ON M.ID = B.Month_FK
+JOIN tbl_Song S ON S.ID = B.Song_FK
+JOIN tbl_Artist A ON A.ID = S.Artist_FK
+
+LEFT JOIN Scrobbles SC
+    ON SC.Song_FK = B.Song_FK
+    AND SC.Y = M.Year
+    AND SC.M = M.Month
+
+ORDER BY M.MonthDate, B.Rank;

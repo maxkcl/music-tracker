@@ -41,6 +41,10 @@ def songlist_page():
 def sheetscup_page():
     return render_template("sheetscup.html")
 
+@app.route("/big16_page")
+def big16_page():
+    return render_template("big16.html")
+
 # ==============================
 # QUERY BUILDER
 # ==============================
@@ -585,6 +589,56 @@ def get_sheetscup():
     df = pd.read_sql(query, conn)
 
     return jsonify(df.to_dict(orient="records"))
+
+# ==============================
+# BIG 16
+# ==============================
+
+@app.route("/api/big16")
+def get_big16():
+    import pandas as pd
+
+    query = """
+    WITH Scrobbles AS (
+    SELECT 
+        Song_FK,
+        YEAR(DatetimePlayed) AS Y,
+        MONTH(DatetimePlayed) AS M,
+        COUNT(*) AS ScrobbleCount
+    FROM tbl_Scrobble
+    GROUP BY 
+        Song_FK,
+        YEAR(DatetimePlayed),
+        MONTH(DatetimePlayed)
+    )
+
+    SELECT 
+        B.Rank,
+        ISNULL(SC.ScrobbleCount, 0) AS Plays,
+        S.SongName,
+        A.ArtistName,
+        M.MonthDate,
+        M.Year,
+        M.Month
+
+    FROM tbl_Big16 B
+    JOIN tbl_Month M ON M.ID = B.Month_FK
+    JOIN tbl_Song S ON S.ID = B.Song_FK
+    JOIN tbl_Artist A ON A.ID = S.Artist_FK
+
+    LEFT JOIN Scrobbles SC
+        ON SC.Song_FK = B.Song_FK
+        AND SC.Y = M.Year
+        AND SC.M = M.Month
+
+    ORDER BY M.MonthDate, B.Rank
+    """
+    
+    df = pd.read_sql(query, conn)
+
+    return jsonify(df.to_dict(orient="records"))
+
+    
 
 # ==============================
 # SYNC

@@ -46,7 +46,11 @@ function renderSongTable(data) {
         <tr>
             <td>${i}</td>
             <td>${row.SongName}</td>
-            <td>${row.ArtistName}</td>
+            <td>
+                <a href="/artist/${row.ArtistID}" class="artist-link">
+                    ${row.ArtistName}
+                </a>
+            </td>
             <td><strong>${row.Rating}</strong></td>
             <td>${row.TP}</td>
             <td>${row.N1s}</td>

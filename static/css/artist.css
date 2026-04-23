@@ -1,0 +1,18 @@
+.artist-page {
+    margin-left: 12.5%
+}
+
+/* ===== Cells ===== */
+#artist-songs th,
+#artist-songs td {
+    white-space: nowrap;
+    padding: 5px 10px;
+    border: 1px solid #303030;
+    background: #121212;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.highlight-n1 {
+    background-color: #948045 !important
+}

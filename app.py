@@ -826,6 +826,7 @@ def get_latest_ratings():
     )
     SELECT 
         s.SongName,
+        a.ID as ArtistID,
         a.ArtistName,
         r.Rating,
         r.TP,
@@ -842,6 +843,57 @@ def get_latest_ratings():
 
     df = pd.read_sql(query, conn)
     return jsonify(df.to_dict(orient="records"))
+
+# ==============================
+# BIG BOY TIME - ARTIST PAGE
+# ==============================
+@app.route("/artist/<int:artist_id>")
+def artist_page(artist_id):
+    return render_template("artist.html", artist_id=artist_id)
+
+@app.route("/api/artist/<int:artist_id>")
+def get_artist(artist_id):
+    import pandas as pd
+
+    # ----------------------------
+    # Artist info
+    # ----------------------------
+    artist_query = """
+    SELECT ArtistName
+    FROM tbl_Artist
+    WHERE ID = ?
+    """
+
+    artist_df = pd.read_sql(artist_query, conn, params=[artist_id])
+
+    # ----------------------------
+    # Songs + ratings
+    # ----------------------------
+    songs_query = """
+    SELECT 
+        s.ID,
+        s.SongName,
+        r.Rating,
+        r.Plays,
+        r.TP,
+        r.N1s,
+        r.MIC
+    FROM tbl_Song s
+    LEFT JOIN tbl_SGVSongs r 
+        ON r.Song_FK = s.ID
+    WHERE s.Artist_FK = ?
+    AND r.Snapshot_FK = (
+        SELECT MAX(ID) FROM tbl_SGVSnapshot
+    )
+    ORDER BY r.Rating DESC
+    """
+
+    songs_df = pd.read_sql(songs_query, conn, params=[artist_id])
+
+    return jsonify({
+        "name": artist_df.iloc[0]["ArtistName"],
+        "songs": songs_df.to_dict(orient="records")
+    })
 
 # ==============================
 # SYNC

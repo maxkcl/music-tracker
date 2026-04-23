@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href = "{{ url_for('static', filename='css/artist.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="artist-page" data-artist-id="{{ artist_id }}">
+    <h1 id="artist-name"></h1>
+
+    <div id="artist-summary"></div>
+    <div id="songs-wrapper">
+        <div id="artist-songs"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/artist.js') }}"></script>
+{% endblock %}

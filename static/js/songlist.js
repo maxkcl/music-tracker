@@ -354,8 +354,8 @@ function renderSongRows(data) {
         const tr = document.createElement("tr");
 
         tr.appendChild(tdCell(index + 1));
-        tr.appendChild(tdCell(item.name));
-        tr.appendChild(tdCell(item.artist));
+        tr.appendChild(tdCell(makeLink(item.song_id, item.name, "song"), true));
+        tr.appendChild(tdCell(makeLink(item.artist_id, item.artist, "artist"), true));
         tr.appendChild(tdCell(item.album));
         tr.appendChild(tdCell(formatDateTime(item.first_played)));
         tr.appendChild(tdCell(formatDateTime(item.last_played)));
@@ -365,107 +365,13 @@ function renderSongRows(data) {
     });
 }
 
-// OLD function before fixing select issue
-// function renderSongTable(data) {
-//     const container = document.getElementById("results");
-//     container.innerHTML = "";
-
-//     const table = document.createElement("table");
-//     table.classList.add("list-table");
-
-//     const headers = [
-//         "Rank",
-//         "Song Name",
-//         "Artist",
-//         "Album",
-//         "First Played",
-//         "Last Played",
-//         "Total Plays"
-//     ];
-
-//     const columnMap = {
-//         "Song Name": "name",
-//         "Artist": "artist",
-//         "Album": "album",
-//         "First Played": "first_played",
-//         "Last Played": "last_played",
-//         "Total Plays": "value"
-//     };
-
-//     const thead = document.createElement("thead");
-
-//     // HEADER ROW (sorting)
-//     const trHead = document.createElement("tr");
-
-//     headers.forEach(h => {
-//         const th = document.createElement("th");
-//         const key = columnMap[h];
-
-//         th.textContent = h;
-
-//         if (key) {
-//             th.style.cursor = "pointer";
-
-//             if (songSort.column === key) {
-//                 th.textContent += songSort.direction === "asc" ? " ▲" : " ▼";
-//             }
-
-//             th.onclick = () => {
-//                 if (songSort.column === key) {
-//                     songSort.direction = songSort.direction === "asc" ? "desc" : "asc";
-//                 } else {
-//                     songSort.column = key;
-//                     songSort.direction = "desc";
-//                 }
-
-//                 rerenderSongs();
-//             };
-//         }
-
-//         trHead.appendChild(th);
-//     });
-
-//     thead.appendChild(trHead);
-
-//     // FILTER ROW
-//     const trFilter = document.createElement("tr");
-
-//     trFilter.appendChild(document.createElement("th")); // rank
-
-//     trFilter.appendChild(createTextFilter("name"));
-//     trFilter.appendChild(createTextFilter("artist"));
-//     trFilter.appendChild(createTextFilter("album"));
-
-//     trFilter.appendChild(createOperatorFilter("first_played"));
-//     trFilter.appendChild(createOperatorFilter("last_played"));
-//     trFilter.appendChild(createOperatorFilter("value"));
-
-//     thead.appendChild(trFilter);
-//     table.appendChild(thead);
-
-//     // BODY
-//     const tbody = document.createElement("tbody");
-
-//     data.forEach((item, index) => {
-//         const tr = document.createElement("tr");
-
-//         tr.appendChild(td(index + 1));
-//         tr.appendChild(td(item.name));
-//         tr.appendChild(td(item.artist));
-//         tr.appendChild(td(item.album));
-//         tr.appendChild(td(formatDateTime(item.first_played)));
-//         tr.appendChild(td(formatDateTime(item.last_played)));
-//         tr.appendChild(td(item.value));
-
-//         tbody.appendChild(tr);
-//     });
-
-//     table.appendChild(tbody);
-//     container.appendChild(table);
-// }
-
-function tdCell(content) {
+function tdCell(content, isLink = false) {
     const cell = document.createElement("td");
-    cell.textContent = content ?? "";
+    if (isLink) {
+        cell.innerHTML = content ?? "";
+    }
+    else {
+        cell.textContent = content ?? "";
+    }
     return cell;
 }

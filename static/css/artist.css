@@ -1,5 +1,95 @@
 .artist-page {
-    margin-left: 12.5%
+    margin-left: 12.5%;
+    margin-right: 12.5%
+}
+
+/* ===== Summary ===== */
+.artist-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 40px;
+    margin-bottom: 30px;
+}
+
+/* LEFT SIDE */
+.artist-left {
+    flex: 1;
+}
+
+.artist-left h2 {
+    margin-bottom: 10px;
+}
+
+.stat {
+    margin: 6px 0;
+    font-size: 14px;
+}
+
+.rank {
+    color: #888;
+    margin-left: 4px;
+}
+
+/* RIGHT SIDE */
+.artist-right {
+    flex: 1;
+    margin-top: 20px;
+}
+
+.card-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* CARD STYLE */
+.big16-card {
+    background: linear-gradient(90deg, #b4a656, #9c7e06);
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-width: 140px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.big16-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+}
+
+.card-title {
+    display: block;
+    font-weight: bold;
+    color: white;
+    text-decoration: none;
+}
+
+.card-title:hover {
+    text-decoration: underline;
+}
+
+.card-sub {
+    font-size: 12px;
+    color: #ffffff;
+    margin-top: 4px;
+}
+
+.stat-row {
+    margin-bottom: 12px;
+}
+
+.stat-card {
+    background: #2a2a2a;
+    border-left: 3px solid #3498db;
+}
+
+/* optional: make them stand out more */
+.stat-card .card-title {
+    font-size: 14px;
+}
+
+.stat-card .card-sub {
+    font-size: 12px;
 }
 
 /* ===== Cells ===== */
@@ -46,4 +136,8 @@ a {
 
 a:hover {
     opacity: 0.7;
+}
+
+.song-link:hover {
+    text-decoration: underline;
 }

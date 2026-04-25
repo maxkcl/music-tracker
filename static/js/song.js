@@ -20,37 +20,23 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function loadSong(songId) {
-    try {
-        const res = await fetch(`/api/song/${songId}`);
+    const res = await fetch(`/api/song/${songId}`);
+    const data = await res.json();
 
-        const data = await res.json();
-        const info = data.info[0];
+    renderSongSummary(data.song);
+
+    const trimmed = trimLeadingEmptyMonths(data.monthly);
+    fullMonthlyData = trimmed;
+    renderMonthlyTable(filterMonths(fullMonthlyData, showAllMonths));
+}
+
+function renderSongSummary(data) {
 
         document.getElementById("song-name").innerHTML = `<h1>
-                ${makeLink(info.ArtistID, info.ArtistName, "artist")}
+                ${makeLink(data.ArtistID, data.ArtistName, "artist")}
                 — 
-                ${info.SongName}
+                ${data.SongName}
             </h1>`;
-
-        const res1 = await fetch(`/api/song/${songId}/monthly`);
-
-        const text = await res1.text();
-
-        if (!res1.ok) {
-            throw new Error(`Monthly fetch failed: ${res1.status}`);
-        }
-
-        const data1 = JSON.parse(text);
-
-        const trimmed = trimLeadingEmptyMonths(data1);
-
-        fullMonthlyData = trimmed;
-
-        renderMonthlyTable(filterMonths(fullMonthlyData, showAllMonths));
-
-    } catch (err) {
-        console.error("Fetch failed:", err);
-    }
 }
 
 function renderMonthlyTable(data) {

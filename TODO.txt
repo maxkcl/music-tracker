@@ -1,6 +1,3 @@
 TODO
 
-FIX: Banner song directs to wrong page
-
-1. Artists db implementation
-2. Gabe / Max song db
+1. Gabe / Max song db

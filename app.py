@@ -4,6 +4,7 @@ import pandas as pd
 import subprocess
 from db import get_connection
 from fetch import apply_name_fixes
+import time
 
 app = Flask(__name__)
 
@@ -16,14 +17,86 @@ BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 # DB CONNECTION
 # ==============================
 
-conn = pyodbc.connect(
-    "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=MKCL\MSSQLSERVER01;"
-    "DATABASE=DB_MusicTracker;"
-    "Trusted_Connection=yes;"
-)
-
 conn, cur = get_connection()
+
+def run_query(query, params=None, one=False):
+    import pyodbc
+    import pandas as pd
+
+    conn, cur = get_connection()
+
+    try:
+        df = pd.read_sql_query(query, conn, params=params)
+
+        # force full materialization (important)
+        df = df.copy()
+
+        if one:
+            return df.to_dict(orient="records")[0] if not df.empty else None
+
+        return df.to_dict(orient="records")
+
+    finally:
+        conn.close()
+
+def run_multi(query_list, params_list):
+    import pyodbc
+    import pandas as pd
+
+    conn, cur = get_connection()
+
+    try:
+        results = []
+
+        for q, p in zip(query_list, params_list):
+            df = pd.read_sql_query(q, conn, params=p)
+            df = df.copy()
+            results.append(df)
+
+        return results
+
+    finally:
+        conn.close()
+
+def replace_na(df):
+    df = df.replace([float("inf"), float("-inf")], None)
+    df = df.fillna("")
+    return df
+
+# ==============================
+# PAGE CACHING
+# ==============================
+
+ARTIST_CACHE = {}
+SONG_CACHE = {}
+CACHE_TTL_SECONDS = 60 * 10 # 10 minutes
+
+def get_cached_artist(artist_id):
+    entry = ARTIST_CACHE.get(artist_id)
+
+    if entry:
+        data, ts = entry
+        if time.time() - ts < CACHE_TTL_SECONDS:
+            return data
+
+    return None
+
+def set_cached_artist(artist_id, data):
+    ARTIST_CACHE[artist_id] = (data, time.time())
+
+def get_cached_song(song_id):
+    import time
+    entry = SONG_CACHE.get(song_id)
+    if entry:
+        data, ts = entry
+        if time.time() - ts < CACHE_TTL_SECONDS:
+            return data
+    return None
+
+
+def set_cached_song(song_id, data):
+    import time
+    SONG_CACHE[song_id] = (data, time.time())
 
 # ==============================
 # ROUTES
@@ -531,8 +604,11 @@ def get_songlist():
 
     query = f"""
     SELECT 
+        so.ID AS songId,
         so.SongName AS name,
+        a.ID AS artistId,
         a.ArtistName AS artist,
+        al.ID AS albumId,
         al.AlbumName AS album,
         MIN(s.DatetimePlayed) AS first_played,
         MAX(s.DatetimePlayed) AS last_played,
@@ -542,7 +618,7 @@ def get_songlist():
     JOIN tbl_Artist a ON so.Artist_FK = a.ID
     LEFT JOIN tbl_Album al ON so.Album_FK = al.ID
     {date_filter}
-    GROUP BY so.SongName, a.ArtistName, al.AlbumName
+    GROUP BY so.ID, so.SongName, a.ID, a.ArtistName, al.ID, al.AlbumName
     ORDER BY value DESC
     """
 
@@ -551,8 +627,11 @@ def get_songlist():
     results = []
     for _, row in df.iterrows():
         results.append({
+            "song_id": int(row["songId"]),
             "name": str(row["name"]),
+            "artist_id": int(row["artistId"]),
             "artist": str(row["artist"]),
+            "album_id": int(row["albumId"]) if row["albumId"] else "",
             "album": str(row["album"]) if row["album"] else "",
             "first_played": row["first_played"].isoformat() if row["first_played"] else "",
             "last_played": row["last_played"].isoformat() if row["last_played"] else "",
@@ -824,30 +903,64 @@ def sgv_update_ratings():
 
 @app.route("/api/sgv-get-ratings")
 def get_latest_ratings():
+    import json
+    from flask import Response
+
     query = """
-    WITH LatestSnapshot AS (
-        SELECT MAX(ID) AS SnapshotID
+    WITH SnapshotBounds AS (
+        SELECT
+            MAX(ID) AS LatestID,
+            MIN(CASE 
+                WHEN CreatedAt >= DATEADD(DAY, -30, GETDATE()) 
+                THEN ID 
+            END) AS Earliest30ID
         FROM tbl_SGVSnapshot
     )
+
     SELECT 
+        s.ID AS SongID,
         s.SongName,
-        a.ID as ArtistID,
+        a.ID AS ArtistID,
         a.ArtistName,
-        r.Rating,
-        r.TP,
-        r.N1s,
-        r.MIC,
-        r.Plays,
-        r.DecayedPlays
-    FROM tbl_SGVSongs r
-    JOIN LatestSnapshot ls ON r.Snapshot_FK = ls.SnapshotID
-    JOIN tbl_Song s ON s.ID = r.Song_FK
-    JOIN tbl_Artist a ON a.ID = s.Artist_FK
-    ORDER BY r.Rating DESC
+
+        cur.Rating,
+        cur.TP,
+        cur.N1s,
+        cur.MIC,
+        cur.Plays,
+        cur.DecayedPlays,
+
+        prev.Rating AS PreviousRating,
+
+        (cur.Rating - ISNULL(prev.Rating, cur.Rating)) AS RatingDiff
+
+    FROM SnapshotBounds sb
+
+    JOIN tbl_SGVSongs cur
+        ON cur.Snapshot_FK = sb.LatestID
+
+    LEFT JOIN tbl_SGVSongs prev
+        ON prev.Snapshot_FK = sb.Earliest30ID
+        AND prev.Song_FK = cur.Song_FK
+
+    JOIN tbl_Song s 
+        ON s.ID = cur.Song_FK
+
+    JOIN tbl_Artist a 
+        ON a.ID = s.Artist_FK
+
+    ORDER BY cur.Rating DESC
     """
 
     df = pd.read_sql(query, conn)
-    return jsonify(df.to_dict(orient="records"))
+
+    df = df.replace([float("inf"), float("-inf")], None)
+    df = df.fillna("")
+    
+    return Response(
+        json.dumps(df.to_dict(orient="records"), default=str),
+        mimetype="application/json"
+    )
 
 # ==============================
 # BIG BOY TIME - ARTIST PAGE
@@ -858,26 +971,13 @@ def artist_page(artist_id):
 
 @app.route("/api/artist/<int:artist_id>")
 def get_artist(artist_id):
-    import pandas as pd
 
-    # ----------------------------
-    # Artist info
-    # ----------------------------
-    artist_query = """
-    SELECT ArtistName
-    FROM tbl_Artist
-    WHERE ID = ?
-    """
+    cached = get_cached_artist(artist_id)
+    if cached:
+        return jsonify(cached)
 
-    artist_df = pd.read_sql(artist_query, conn, params=[artist_id])
-
-    if artist_df.empty:
-        return jsonify({"error": "Artist not found"}), 404
-
-    # ----------------------------
-    # Songs + ratings
-    # ----------------------------
     songs_query = """
+    SET NOCOUNT ON;
     SELECT 
         s.ID,
         s.SongName,
@@ -896,17 +996,7 @@ def get_artist(artist_id):
     ORDER BY r.Rating DESC
     """
 
-    songs_df = pd.read_sql(songs_query, conn, params=[artist_id])
-
-    return jsonify({
-        "name": artist_df.iloc[0]["ArtistName"],
-        "songs": songs_df.to_dict(orient="records")
-    })
-
-@app.route("/api/artist/<int:artist_id>/monthly")
-def get_artist_monthly(artist_id):
-    try:
-        query = """
+    monthly_query = """
         WITH MonthlyPlays AS (
             SELECT 
                 YEAR(s.DatetimePlayed) AS yr,
@@ -1017,12 +1107,207 @@ def get_artist_monthly(artist_id):
 
         ORDER BY m.Year, m.Month
         """
-        df = pd.read_sql(query, conn, params=[artist_id, artist_id, artist_id])
-        df = df.astype(object).where(pd.notnull(df), None)
-        return jsonify(df.to_dict(orient="records"))
-    except Exception as e:
-        print("MONTHLY ERROR:", str(e))
-        return jsonify({"error": str(e)}), 500
+
+    summary_query = """
+        SET NOCOUNT ON;
+        -- First scrobble (discovery)
+        WITH FirstPlay AS (
+            SELECT 
+                so.Artist_FK,
+                MIN(s.DatetimePlayed) AS FirstPlayed
+            FROM tbl_Scrobble s
+            JOIN tbl_Song so ON so.ID = s.Song_FK
+            GROUP BY so.Artist_FK
+        ),
+
+        -- First big 16 month (discovery)
+        FirstBig16 AS (
+            SELECT 
+                so.Artist_FK,
+                MIN(m.MonthDate) AS FirstBig16Month
+            FROM tbl_Big16 b
+            JOIN tbl_Song so ON so.ID = b.Song_FK
+            JOIN tbl_Month m ON m.ID = b.Month_FK
+            GROUP BY so.Artist_FK
+        ),
+
+        -- Total plays per artist
+        ArtistPlays AS (
+            SELECT 
+                so.Artist_FK,
+                COUNT(*) AS TotalPlays
+            FROM tbl_Scrobble s
+            JOIN tbl_Song so ON so.ID = s.Song_FK
+            GROUP BY so.Artist_FK
+        ),
+
+        -- Rank artists by plays
+        PlayRanks AS (
+            SELECT *,
+                RANK() OVER (ORDER BY TotalPlays DESC) AS PlaysRank
+            FROM ArtistPlays
+        ),
+
+        -- Big16 points per artist
+        Big16Points AS (
+            SELECT 
+                so.Artist_FK,
+                SUM(b.Points) AS TotalPoints
+            FROM tbl_Big16 b
+            JOIN tbl_Song so ON so.ID = b.Song_FK
+            GROUP BY so.Artist_FK
+        ),
+
+        -- Rank by points
+        PointRanks AS (
+            SELECT *,
+                RANK() OVER (ORDER BY TotalPoints DESC) AS PointsRank
+            FROM Big16Points
+        ),
+
+        -- #1 songs + months
+        Big16Wins AS (
+            SELECT 
+                so.Artist_FK,
+                so.ID AS SongID,
+                so.SongName,
+                STRING_AGG(
+                    FORMAT(m.MonthDate, 'MMM yyyy'),
+                    ', '
+                ) WITHIN GROUP (ORDER BY m.MonthDate ASC) AS WinMonths
+            FROM tbl_Big16 b
+            JOIN tbl_Song so ON so.ID = b.Song_FK
+            JOIN tbl_Month m ON m.ID = b.Month_FK
+            WHERE b.Rank = 1
+            GROUP BY so.Artist_FK, so.ID, so.SongName
+        ),
+
+        Big16WinCounts AS (
+            SELECT 
+                so.Artist_FK,
+                COUNT(*) AS WinCount
+            FROM tbl_Big16 b
+            JOIN tbl_Song so ON so.ID = b.Song_FK
+            WHERE b.Rank = 1
+            GROUP BY so.Artist_FK
+        ),
+
+        Big16WinRanks AS (
+            SELECT *,
+                RANK() OVER (ORDER BY WinCount DESC) AS WinRank
+            FROM Big16WinCounts
+        ),
+
+        MonthlyArtistPlays AS (
+            SELECT 
+                YEAR(s.DatetimePlayed) AS yr,
+                MONTH(s.DatetimePlayed) AS mn,
+                so.Artist_FK,
+                COUNT(*) AS Plays
+            FROM tbl_Scrobble s
+            JOIN tbl_Song so ON so.ID = s.Song_FK
+            GROUP BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), so.Artist_FK
+        ),
+
+        MonthlyLeaders AS (
+            SELECT *
+            FROM (
+                SELECT *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY yr, mn
+                        ORDER BY Plays DESC
+                    ) AS rn
+                FROM MonthlyArtistPlays
+            ) x
+            WHERE rn = 1
+        ),
+
+        MonthlyLeaderStats AS (
+            SELECT 
+                Artist_FK,
+                COUNT(*) AS LeaderCount,
+                MAX(Plays) AS BestMonthPlays,
+                MAX(DATEFROMPARTS(yr, mn, 1)) AS BestMonthDate
+            FROM MonthlyLeaders
+            GROUP BY Artist_FK
+        ),
+
+        AggregatedWins AS (
+            SELECT 
+                Artist_FK,
+                STRING_AGG(
+                    CAST(SongID AS VARCHAR) + '|' +
+                    SongName + '|' +
+                    WinMonths,
+                    ';;'
+                ) AS Wins
+            FROM Big16Wins
+            GROUP BY Artist_FK
+        )
+
+        SELECT 
+            a.ArtistName,
+            fp.FirstPlayed,
+            fb.FirstBig16Month,
+            pr.TotalPlays,
+            pr.PlaysRank,
+            pt.TotalPoints,
+            pt.PointsRank,
+            bw.WinCount,
+            bw.WinRank,
+            ml.LeaderCount,
+            ml.BestMonthPlays,
+            ml.BestMonthDate,
+            aw.Wins
+
+        FROM tbl_Artist a
+
+        LEFT JOIN FirstPlay fp ON fp.Artist_FK = a.ID
+        LEFT JOIN FirstBig16 fb ON fb.Artist_FK = a.ID
+        LEFT JOIN PlayRanks pr ON pr.Artist_FK = a.ID
+        LEFT JOIN PointRanks pt ON pt.Artist_FK = a.ID
+        LEFT JOIN Big16Wins w ON w.Artist_FK = a.ID
+        LEFT JOIN Big16WinRanks bw ON bw.Artist_FK = a.ID
+        LEFT JOIN MonthlyLeaderStats ml ON ml.Artist_FK = a.ID
+        LEFT JOIN AggregatedWins aw ON aw.Artist_FK = a.ID
+
+        WHERE a.ID = ?
+
+        GROUP BY 
+            a.ArtistName,
+            fp.FirstPlayed,
+            fb.FirstBig16Month,
+            pr.TotalPlays,
+            pr.PlaysRank,
+            pt.TotalPoints,
+            pt.PointsRank,
+            bw.WinCount,
+            bw.WinRank,
+            ml.LeaderCount,
+            ml.BestMonthPlays,
+            ml.BestMonthDate,
+            aw.Wins
+        """
+
+    songs_df, monthly_df, summary_df = run_multi(
+        [songs_query, monthly_query, summary_query],
+        [[artist_id], [artist_id, artist_id, artist_id], [artist_id]]
+    )
+
+    if summary_df.empty:
+        return jsonify({"error": "Artist not found"}), 404
+
+    songs_df, monthly_df, summary_df = replace_na(songs_df), replace_na(monthly_df), replace_na(summary_df)
+
+    response = {
+        "songs": songs_df.to_dict("records"),
+        "monthly": monthly_df.to_dict("records"),
+        "summary": summary_df.to_dict("records")
+    }
+
+    set_cached_artist(artist_id, response)
+
+    return jsonify(response)
 
 # ==============================
 # SONG PAGES
@@ -1034,121 +1319,144 @@ def song_page(song_id):
 
 @app.route("/api/song/<int:song_id>")
 def get_song(song_id):
-    import pandas as pd
+    
+    cached = get_cached_song(song_id)
+    if cached:
+        return jsonify(cached)
 
-    # ----------------------------
-    # Song info
-    # ----------------------------
     song_query = """
-    SELECT SongName, A.ID AS ArtistID, ArtistName, Al.ID AS AlbumID, AlbumName
-    FROM tbl_Song S
-    LEFT JOIN tbl_Artist A ON A.ID = S.Artist_FK
-    LEFT JOIN tbl_Album Al ON Al.ID = S.Album_FK
-    WHERE S.ID = ?
-    """
-
-    song_df = pd.read_sql(song_query, conn, params=[song_id])
-
-    if song_df.empty:
-        return jsonify({"error": "Song not found"}), 404
-
-    # ----------------------------
-    # Stats
-    # ----------------------------
-    stats_query = """
+    SET NOCOUNT ON;
     SELECT 
-        r.Rating,
-        r.Plays,
-        r.TP,
-        r.N1s,
-        r.MIC
+        s.ID,
+        s.SongName,
+        a.ID AS ArtistID,
+        a.ArtistName,
+        al.ID AS AlbumID,
+        al.AlbumName
     FROM tbl_Song s
-    LEFT JOIN tbl_SGVSongs r 
-        ON r.Song_FK = s.ID
+    LEFT JOIN tbl_Artist a ON a.ID = s.Artist_FK
+    LEFT JOIN tbl_Album Al ON Al.ID = S.Album_FK
     WHERE s.ID = ?
-    AND r.Snapshot_FK = (
-        SELECT MAX(ID) FROM tbl_SGVSnapshot
-    )
-    ORDER BY r.Rating DESC
     """
 
-    stats_df = pd.read_sql(stats_query, conn, params=[song_id])
+    summary_query = """
+    SET NOCOUNT ON;
 
-    return jsonify({
-        "info": song_df.to_dict(orient="records"),
-        "stats": stats_df.to_dict(orient="records")
-    })
+    WITH Plays AS (
+        SELECT COUNT(*) AS Plays
+        FROM tbl_Scrobble
+        WHERE Song_FK = ?
+    ),
 
-@app.route("/api/song/<int:song_id>/monthly")
-def get_song_monthly(song_id):
-    try:
-        query = """
-        -- Plays per song per month
-        WITH MonthlySongPlays AS (
+    Points AS (
+        SELECT 
+            SUM(Points) AS TPs,
+            COUNT(CASE WHEN Rank = 1 THEN 1 END) AS N1s
+        FROM tbl_Big16
+        WHERE Song_FK = ?
+    ),
+
+    Rating AS (
+        SELECT TOP 1 *
+        FROM tbl_SGVSongs
+        WHERE Song_FK = ?
+        ORDER BY Snapshot_FK DESC
+    )
+
+    SELECT 
+        p.Plays,
+        pt.TPs,
+        pt.N1s,
+        r.Rating,
+        r.MIC,
+        r.DecayedPlays
+    FROM Plays p
+    CROSS JOIN Points pt
+    LEFT JOIN Rating r ON 1=1
+    """
+
+    monthly_query = """
+    SET NOCOUNT ON;
+
+    WITH MonthlyPlays AS (
+        SELECT 
+            YEAR(DatetimePlayed) AS yr,
+            MONTH(DatetimePlayed) AS mn,
+            COUNT(*) AS Plays
+        FROM tbl_Scrobble
+        WHERE Song_FK = ?
+        GROUP BY YEAR(DatetimePlayed), MONTH(DatetimePlayed)
+    ),
+
+    MonthlyRanks AS (
+        SELECT 
+            yr,
+            mn,
+            Plays,
+            RANK() OVER (
+                PARTITION BY yr, mn
+                ORDER BY Plays DESC
+            ) AS PlaysRank
+        FROM (
             SELECT 
                 YEAR(s.DatetimePlayed) AS yr,
                 MONTH(s.DatetimePlayed) AS mn,
                 s.Song_FK,
                 COUNT(*) AS Plays
             FROM tbl_Scrobble s
-            GROUP BY 
-                YEAR(s.DatetimePlayed),
-                MONTH(s.DatetimePlayed),
-                s.Song_FK
-        ),
+            GROUP BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), s.Song_FK
+        ) x
+        WHERE Song_FK = ?
+    ),
 
-        -- Rank songs per month (only where plays exist)
-        MonthlySongRanks AS (
-            SELECT
-                yr,
-                mn,
-                Song_FK,
-                Plays,
-                RANK() OVER (
-                    PARTITION BY yr, mn
-                    ORDER BY Plays DESC
-                ) AS PlaysRank
-            FROM MonthlySongPlays
-        )
-
+    Big16 AS (
         SELECT 
-            m.Year,
-            m.Month,
+            m.Year AS yr,
+            m.Month AS mn,
+            b.Rank AS Big16Rank
+        FROM tbl_Big16 b
+        JOIN tbl_Month m ON m.ID = b.Month_FK
+        WHERE b.Song_FK = ?
+    )
 
-            ISNULL(r.PlaysRank, NULL) AS PlaysRank,
-            ISNULL(r.Plays, 0) AS Plays,
+    SELECT 
+        m.Year,
+        m.Month,
+        mp.Plays,
+        mr.PlaysRank,
+        b.Big16Rank
+    FROM tbl_Month m
+    LEFT JOIN MonthlyPlays mp 
+        ON mp.yr = m.Year AND mp.mn = m.Month
+    LEFT JOIN MonthlyRanks mr 
+        ON mr.yr = m.Year AND mr.mn = m.Month
+    LEFT JOIN Big16 b
+        ON b.yr = m.Year AND b.mn = m.Month
+    ORDER BY m.Year, m.Month
+    """
 
-            b.Rank AS Big16Rank,
+    song_df, summary_df, monthly_df = run_multi(
+        [song_query, summary_query, monthly_query],
+        [[song_id], [song_id, song_id, song_id], [song_id, song_id, song_id]]
+    )
 
-            CASE 
-                WHEN b.Rank = 1 THEN 1 
-                ELSE 0 
-            END AS IsN1
+    if song_df.empty:
+        return jsonify({"error": "Song not found"}), 404
 
-        FROM tbl_Month m
+    song_df, monthly_df, summary_df = replace_na(song_df), replace_na(monthly_df), replace_na(summary_df)
 
-        LEFT JOIN MonthlySongRanks r
-            ON r.yr = m.Year 
-            AND r.mn = m.Month
-            AND r.Song_FK = ?
+    song = song_df.iloc[0].to_dict()
+    summary = summary_df.iloc[0].to_dict() if not summary_df.empty else {}
 
-        LEFT JOIN tbl_Big16 b
-            ON b.Month_FK = m.ID
-            AND b.Song_FK = ?
+    response = {
+        "song": song,
+        "summary": summary,
+        "monthly": monthly_df.to_dict("records")
+    }
 
-        ORDER BY m.Year, m.Month
-        """
+    set_cached_song(song_id, response)
 
-        df = pd.read_sql(query, conn, params=[song_id, song_id])
-
-        # Safe JSON conversion
-        df = df.astype(object).where(pd.notnull(df), None)
-
-        return jsonify(df.to_dict(orient="records"))
-
-    except Exception as e:
-        print("SONG MONTHLY ERROR:", str(e))
-        return jsonify({"error": str(e)}), 500
+    return jsonify(response)
 
 # ==============================
 # SYNC
@@ -1163,9 +1471,148 @@ def run_fetch():
             text=True,
             check=True
         )
+        # Update tbl_Day and tbl_Month for all affected dates
+        update_daily_stats()
+        # Update SGV Stats
+        print(sgv_update_ratings())
         return jsonify({'success': True, 'output': result.stdout})
     except subprocess.CalledProcessError as e:
         return jsonify({'success': False, 'error': e.stderr})
+
+def update_daily_stats():
+    try:
+        # ----------------------------
+        # 1. Insert missing months
+        # ----------------------------
+        insert_months_sql = """
+        INSERT INTO tbl_Month (MonthDate, Year, Month)
+        SELECT MonthDate, Year, Month
+        FROM (
+            SELECT DISTINCT
+                DATEFROMPARTS(YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), 1) AS MonthDate,
+                YEAR(s.DatetimePlayed) AS Year,
+                MONTH(s.DatetimePlayed) AS Month
+            FROM tbl_Scrobble s
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM tbl_Month m
+                WHERE m.Year = YEAR(s.DatetimePlayed)
+                AND m.Month = MONTH(s.DatetimePlayed)
+            )
+        ) x
+        ORDER BY Year, Month;
+        """
+
+        cur.execute(insert_months_sql)
+        print("Months inserted:", cur.rowcount)
+
+
+        # ----------------------------
+        # 2. Rebuild tbl_Day
+        # ----------------------------
+
+        # Clear existing
+        cur.execute("DELETE FROM tbl_Day;")
+
+
+        # Insert all days
+        insert_days_sql = """
+        ;WITH AllDays AS (
+            SELECT CAST('2020-12-03' AS DATE) AS DayDate
+            UNION ALL
+            SELECT DATEADD(DAY, 1, DayDate)
+            FROM AllDays
+            WHERE DayDate < CAST(GETDATE() AS DATE)
+        )
+        INSERT INTO tbl_Day (DayDate)
+        SELECT DayDate
+        FROM AllDays
+        OPTION (MAXRECURSION 0);
+        """
+
+        cur.execute(insert_days_sql)
+
+
+        # Update total plays
+        update_plays_sql = """
+        UPDATE d
+        SET d.NumPlays = s.PlayCount
+        FROM tbl_Day d
+        JOIN (
+            SELECT CAST(DatetimePlayed AS DATE) AS DayDate, COUNT(*) AS PlayCount
+            FROM tbl_Scrobble
+            GROUP BY CAST(DatetimePlayed AS DATE)
+        ) s ON d.DayDate = s.DayDate;
+        """
+
+        cur.execute(update_plays_sql)
+
+
+        # Update top song
+        update_top_song_sql = """
+        ;WITH SongRank AS (
+            SELECT 
+                CAST(s.DatetimePlayed AS DATE) AS DayDate,
+                so.ID,
+                COUNT(*) AS Plays,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CAST(s.DatetimePlayed AS DATE)
+                    ORDER BY COUNT(*) DESC
+                ) AS rn
+            FROM tbl_Scrobble s
+            JOIN tbl_Song so ON s.Song_FK = so.ID
+            GROUP BY CAST(s.DatetimePlayed AS DATE), so.ID
+        )
+        UPDATE d
+        SET d.TopSong_FK = sr.ID,
+            d.TopSongPlays = sr.Plays
+        FROM tbl_Day d
+        JOIN SongRank sr 
+            ON d.DayDate = sr.DayDate 
+            AND sr.rn = 1;
+        """
+
+        cur.execute(update_top_song_sql)
+
+
+        # Update top artist
+        update_top_artist_sql = """
+        ;WITH ArtistRank AS (
+            SELECT 
+                CAST(s.DatetimePlayed AS DATE) AS DayDate,
+                a.ID,
+                COUNT(*) AS Plays,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CAST(s.DatetimePlayed AS DATE)
+                    ORDER BY COUNT(*) DESC
+                ) AS rn
+            FROM tbl_Scrobble s
+            JOIN tbl_Song so ON s.Song_FK = so.ID
+            JOIN tbl_Artist a ON so.Artist_FK = a.ID
+            GROUP BY CAST(s.DatetimePlayed AS DATE), a.ID
+        )
+        UPDATE d
+        SET d.TopArtist_FK = ar.ID,
+            d.TopArtistPlays = ar.Plays
+        FROM tbl_Day d
+        JOIN ArtistRank ar 
+            ON d.DayDate = ar.DayDate 
+            AND ar.rn = 1;
+        """
+
+        cur.execute(update_top_artist_sql)
+
+
+        # ----------------------------
+        # Commit everything
+        # ----------------------------
+        conn.commit()
+
+        print("✅ Daily stats + months updated successfully.")
+
+    except Exception as e:
+        conn.rollback()
+        print("❌ Error updating daily stats:", e)
 
 # ==============================
 # NOW PLAYING BANNER
@@ -1217,7 +1664,7 @@ def now_playing():
             """, artist_id, song_name)
             row1 = cur.fetchone()
             if row1:
-                song_id = row[0]
+                song_id = row1[0]
 
             return {
                 "playing": True,

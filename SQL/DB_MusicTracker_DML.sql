@@ -8,8 +8,8 @@ vers     Date        Coder       Issue
 1.1      2026-03-30  Max         tbl_Day fix
 */
 
-USE DB_MusicTracker
-GO
+--USE DB_MusicTracker
+--GO
 
 -- Break in case of fire
 --DROP TABLE tbl_Day
@@ -24,7 +24,7 @@ GO
 --);
 DELETE FROM tbl_Day;
 
-WITH AllDays AS (
+;WITH AllDays AS (
     SELECT CAST('2020-12-03' AS DATE) As DayDate
     UNION ALL
     SELECT DATEADD(DAY, 1, DayDate)
@@ -87,21 +87,22 @@ SELECT * FROM tbl_Month
 SELECT * FROM tbl_Big16
 
 -- Insert tbl_Month
---DECLARE @StartDate DATE = '2016-06-01';
---DECLARE @EndDate   DATE = '2026-03-01';
-
---WHILE @StartDate <= @EndDate
---BEGIN
---    INSERT INTO tbl_Month (MonthDate, Year, Month)
---    VALUES (
---        @StartDate,
---        YEAR(@StartDate),
---        MONTH(@StartDate)
---    );
-
---    SET @StartDate = DATEADD(MONTH, 1, @StartDate);
---END;
---SELECT * FROM tbl_Month
+INSERT INTO tbl_Month (MonthDate, Year, Month)
+SELECT MonthDate, Year, Month
+FROM (
+    SELECT DISTINCT
+        DATEFROMPARTS(YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), 1) AS MonthDate,
+        YEAR(s.DatetimePlayed) AS Year,
+        MONTH(s.DatetimePlayed) AS Month
+    FROM tbl_Scrobble s
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM tbl_Month m
+        WHERE m.Year = YEAR(s.DatetimePlayed)
+          AND m.Month = MONTH(s.DatetimePlayed)
+    )
+) x
+ORDER BY Year, Month;
 
 -- Big 16 Artist Backfill
 --INSERT INTO tbl_Artist (ArtistName, ImageURL)
@@ -111,9 +112,7 @@ SELECT * FROM tbl_Big16
 --('Hot Date!', NULL),
 --('KIDS SEE GHOSTS', NULL)
 
---SELECT * FROM tbl_Album A
---LEFT JOIN tbl_Artist Ar ON Ar.ID = A.Artist_FK
---WHERE Ar.ArtistName = 'Stonebank'
-
---INSERT INTO tbl_Song ()
---VALUES
+SELECT * FROM tbl_Month
+SELECT * FROM tbl_SGVSongs
+ORDER BY Snapshot_FK DESC, Rating DESC
+SELECT * FROM tbl_SGVSnapshot

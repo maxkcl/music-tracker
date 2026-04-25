@@ -5,6 +5,7 @@ CONN_STR = (
     "SERVER=MKCL\MSSQLSERVER01;"
     "DATABASE=DB_MusicTracker;"
     "Trusted_Connection=yes;"
+    "MARS_Connection=yes;"
 )
 
 def get_connection():

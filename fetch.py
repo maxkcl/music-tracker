@@ -32,21 +32,6 @@ song_cache = {}
 name_fix_cache = {}
 
 # ==============================
-# HELPERS
-# ==============================
-
-def update_daily_stats():
-    # Load SQL from file
-    with open("SQL/DB_MusicTracker_DML.sql", "r") as f:
-        sql_script = f.read()
-    try:
-        cur.execute(sql_script)
-        conn.commit()
-        print("We did it joe daily stats updated successfully.")
-    except Exception as e:
-        print("Error updating daily stats:", e)
-
-# ==============================
 # GET OR CREATE FUNCTIONS
 # ==============================
 
@@ -354,9 +339,6 @@ def sync():
     # Flush any remaining batch
     flush_batch(batch)
     conn.commit()
-
-    # Update tbl_Day for all affected dates
-    update_daily_stats()
 
     print("Sync complete")
 

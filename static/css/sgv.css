@@ -78,3 +78,20 @@ a {
 a:hover {
     opacity: 0.7;
 }
+
+.rating-arrow {
+    margin-left: 6px;
+    font-weight: bold;
+}
+
+.rating-up {
+    color: #2ecc71;
+}
+
+.rating-down {
+    color: #e74c3c;
+}
+
+.rating-same {
+    color: #aaa;
+}

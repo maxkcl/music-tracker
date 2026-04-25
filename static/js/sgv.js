@@ -45,13 +45,14 @@ function renderSongTable(data) {
         html += `
         <tr>
             <td>${i}</td>
-            <td>${row.SongName}</td>
+            <td>${makeLink(row.SongID, row.SongName, "song")}</td>
+            <td>${makeLink(row.ArtistID, row.ArtistName, "artist")}</td>
             <td>
-                <a href="/artist/${row.ArtistID}" class="artist-link">
-                    ${row.ArtistName}
-                </a>
+                <strong>${row.Rating}</strong>
+                <span class="rating-arrow">
+                    ${getArrow(row.RatingDiff)} ${Math.abs(row.RatingDiff) == 0 ? "": Math.abs(row.RatingDiff)}
+                </span>
             </td>
-            <td><strong>${row.Rating}</strong></td>
             <td>${row.TP}</td>
             <td>${row.N1s}</td>
             <td>${row.MIC}</td>
@@ -67,17 +68,8 @@ function renderSongTable(data) {
     container.innerHTML = html;
 }
 
-async function updateRatings() {
-    const res = await fetch("/api/sgv-update-ratings", {
-        method: "POST"
-    });
-
-    const data = await res.json();
-
-    if (data.error) {
-        alert(data.error);
-        return;
-    }
-
-    await loadRatings(); // reload table
+function getArrow(diff) {
+    if (diff > 0) return `<span class="rating-arrow rating-up">↑</span>`;
+    if (diff < 0) return `<span class="rating-arrow rating-down">↓</span>`;
+    return `<span class="rating-arrow rating-same"></span>`;
 }

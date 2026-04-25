@@ -15,7 +15,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const artistId = el.dataset.artistId;
 
     console.log("Artist ID:", artistId);
-
     loadArtist(artistId);
 });
 
@@ -24,32 +23,134 @@ async function loadArtist(artistId) {
         const res = await fetch(`/api/artist/${artistId}`);
         const data = await res.json();
 
-        document.getElementById("artist-name").innerText = data.name;
-
         renderSongs(data.songs);
+        renderArtistSummary(data.summary[0]);
 
-        const res1 = await fetch(`/api/artist/${artistId}/monthly`);
-
-        const text = await res1.text();
-
-        if (!res1.ok) {
-            throw new Error(`Monthly fetch failed: ${res1.status}`);
-        }
-
-        const data1 = JSON.parse(text);
-
-        const trimmed = trimLeadingEmptyMonths(data1);
-
+        const trimmed = trimLeadingEmptyMonths(data.monthly);
         fullMonthlyData = trimmed;
-
         renderMonthlyTable(filterMonths(fullMonthlyData, showAllMonths));
+        
 
     } catch (err) {
         console.error("Fetch failed:", err);
     }
 }
 
+function renderArtistSummary(data) {
+    const container = document.getElementById("artist-summary");
+
+    const wins = (data.Wins || "").split(";;").filter(Boolean);
+
+    const statCards = [];
+
+    // Big 16 wins card
+    if (data.WinCount > 0) {
+        statCards.push(`
+            <div class="big16-card stat-card">
+                <div class="card-title">
+                    ${data.WinCount}x Big 16 N1
+                </div>
+                <div class="card-sub">
+                    #${data.WinRank} all-time
+                </div>
+            </div>
+        `);
+    }
+
+    // Monthly leader card
+    if (data.LeaderCount > 0) {
+        statCards.push(`
+            <div class="big16-card stat-card">
+                <div class="card-title">
+                    ${data.LeaderCount}x Month Leader
+                </div>
+                <div class="card-sub">
+                    ${data.BestMonthPlays} in ${formatMonth(data.BestMonthDate)}
+                </div>
+            </div>
+        `);
+    }
+
+    const cards = wins.map(w => {
+        const [id, name, months] = w.split("|");
+
+        return `
+            <div class="big16-card" title="${months}">
+                <a href="/song/${id}" class="card-title">${name}</a>
+                <div class="card-sub">${months}</div>
+            </div>
+        `;
+    }).join("");
+
+    container.innerHTML = `
+        <div class="artist-header">
+            
+            <div class="artist-left">
+                <h1>${data.ArtistName}</h1>
+
+                <div class="stat">Discovered: 
+                    ${formatDiscovered(data.FirstPlayed, data.FirstBig16Month)}
+                </div>
+
+                <div class="stat">
+                    Plays: ${data.TotalPlays} 
+                    <span class="rank">(#${data.PlaysRank})</span>
+                </div>
+
+                <div class="stat">
+                    ${data.TotalPoints == null ? "" : `Big 16 Points: ${data.TotalPoints} 
+                    <span class="rank">(#${data.PointsRank})</span>`}
+                </div>
+            </div>
+
+            <div class="artist-right">
+                <div class="card-container stat-row">
+                    ${statCards.join("")}
+                </div>
+                <div class="card-container">
+                    ${cards}
+                </div>
+            </div>
+
+        </div>
+    `;
+}
+
+function formatMonth(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("default", {
+        month: "short",
+        year: "numeric"
+    });
+}
+
+function formatDiscovered(firstPlayed, firstBig16Month) {
+    const cutoff = new Date("2020-12-01");
+
+    if (firstBig16Month) {
+        const big16Date = new Date(firstBig16Month);
+
+        if (big16Date < cutoff) {
+            return `Before ${big16Date.toLocaleDateString("default", {
+                month: "long",
+                year: "numeric"
+            })}`;
+        }
+    }
+
+    if (!firstPlayed) return "";
+
+    const d = new Date(firstPlayed);
+    return d.toLocaleDateString("default", {
+        month: "long",
+        day: "numeric",
+        year: "numeric"
+    });
+}
+
 function renderMonthlyTable(data) {
+    
     let html = "<table class='monthly'>";
     
     html += `
@@ -73,15 +174,19 @@ function renderMonthlyTable(data) {
         
         const beforeCutoff = isBeforeCutoff(row.Year, row.Month);
         const plays = beforeCutoff ? "" : row.Plays;
-        const rank = beforeCutoff ? "" : "#".concat(row.PlaysRank ?? "");
+        let rank = beforeCutoff ? "" : "#".concat(row.PlaysRank ?? "");
+        if (row.PlaysRank == "") {
+            rank = "";
+        }
 
         const isNumberOne = hasNumberOne(row.Top16Songs);
+        const isMonthLeader = row.PlaysRank == 1;
 
         html += `
             <tr>
                 <td class="${isNumberOne ? "n1-row" : ""}">${label}</td>
-                <td>${rank}</td>
-                <td>${plays}</td>
+                <td class="${isMonthLeader ? "n1-row" : ""}">${rank}</td>
+                <td class="${isMonthLeader ? "n1-row" : ""}">${plays}</td>
                 <td>${ row.TopSongID ? makeLink(row.TopSongID, row.TopSong, "song") : "" }</td>
                 <td>${row.TopSongPlays ?? ""}</td>
                 <td>${row.Top16Count}</td>

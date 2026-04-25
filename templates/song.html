@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href = "{{ url_for('static', filename='css/song.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="song-page" data-song-id="{{ song_id }}">
+    <div id="song-name"></div>
+
+    <div id="monthly-wrapper">
+        <button onclick="toggleMonths()" id="toggle-months-btn">
+            Show All Months
+        </button>
+        <div id="song-monthly"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/song.js') }}"></script>
+{% endblock %}

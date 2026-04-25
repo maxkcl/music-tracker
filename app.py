@@ -312,6 +312,11 @@ def apply_fix():
                     WHERE TopSong_FK = ?
                 """, (duplicate_id, song_id))
                 cur.execute(f"""
+                    UPDATE tbl_SGVSongs
+                    SET Song_FK = ?
+                    WHERE Song_FK = ?
+                """, (duplicate_id, song_id))
+                cur.execute(f"""
                     UPDATE tbl_RedirectSong
                     SET Redirect_FK = ?
                     WHERE Redirect_FK = ?
@@ -866,6 +871,9 @@ def get_artist(artist_id):
 
     artist_df = pd.read_sql(artist_query, conn, params=[artist_id])
 
+    if artist_df.empty:
+        return jsonify({"error": "Artist not found"}), 404
+
     # ----------------------------
     # Songs + ratings
     # ----------------------------
@@ -894,6 +902,253 @@ def get_artist(artist_id):
         "name": artist_df.iloc[0]["ArtistName"],
         "songs": songs_df.to_dict(orient="records")
     })
+
+@app.route("/api/artist/<int:artist_id>/monthly")
+def get_artist_monthly(artist_id):
+    try:
+        query = """
+        WITH MonthlyPlays AS (
+            SELECT 
+                YEAR(s.DatetimePlayed) AS yr,
+                MONTH(s.DatetimePlayed) AS mn,
+                so.Artist_FK,
+                COUNT(*) AS Plays
+            FROM tbl_Scrobble s
+            JOIN tbl_Song so ON so.ID = s.Song_FK
+            GROUP BY 
+                YEAR(s.DatetimePlayed),
+                MONTH(s.DatetimePlayed),
+                so.Artist_FK
+        ),
+
+        -- Rank artists per month
+        MonthlyRanks AS (
+            SELECT
+                yr,
+                mn,
+                Artist_FK,
+                Plays,
+                RANK() OVER (
+                    PARTITION BY yr, mn
+                    ORDER BY Plays DESC
+                ) AS PlaysRank
+            FROM MonthlyPlays
+        ),
+
+        -- Top song per artist per month
+        TopSongs AS (
+            SELECT *
+            FROM (
+                SELECT 
+                    YEAR(s.DatetimePlayed) AS yr,
+                    MONTH(s.DatetimePlayed) AS mn,
+                    so.Artist_FK,
+                    so.ID AS SongID,
+                    so.SongName,
+                    COUNT(*) AS SongPlays,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), so.Artist_FK
+                        ORDER BY COUNT(*) DESC
+                    ) AS rn
+                FROM tbl_Scrobble s
+                JOIN tbl_Song so ON so.ID = s.Song_FK
+                GROUP BY 
+                    YEAR(s.DatetimePlayed),
+                    MONTH(s.DatetimePlayed),
+                    so.Artist_FK,
+                    so.ID,
+                    so.SongName
+            ) t
+            WHERE rn = 1
+        ),
+
+        -- Big16 songs per artist per month
+        Big16Agg AS (
+            SELECT 
+                m.Year AS yr,
+                m.Month AS mn,
+                so.Artist_FK,
+                COUNT(*) AS Top16Count,
+                STRING_AGG(
+                    CAST(so.ID AS VARCHAR(20)) + '|' +
+                    ISNULL(so.SongName, '') + '|' +
+                    CAST(b.Rank AS VARCHAR(10)),
+                    ';;'
+                ) WITHIN GROUP (ORDER BY b.Rank ASC) AS Top16Songs
+            FROM tbl_Big16 b
+            JOIN tbl_Song so ON so.ID = b.Song_FK
+            JOIN tbl_Month m ON m.ID = b.Month_FK
+            GROUP BY 
+                m.Year,
+                m.Month,
+                so.Artist_FK
+        )
+
+        SELECT 
+            m.Year,
+            m.Month,
+
+            ISNULL(r.PlaysRank, NULL) AS PlaysRank,
+            ISNULL(r.Plays, 0) AS Plays,
+
+            ts.SongID AS TopSongID,
+            ts.SongName AS TopSong,
+            ts.SongPlays AS TopSongPlays,
+
+            ISNULL(b.Top16Count, 0) AS Top16Count,
+            ISNULL(b.Top16Songs, '') AS Top16Songs
+
+        FROM tbl_Month m
+
+        LEFT JOIN MonthlyRanks r
+            ON r.yr = m.Year 
+            AND r.mn = m.Month
+            AND r.Artist_FK = ?
+
+        LEFT JOIN TopSongs ts
+            ON ts.yr = m.Year 
+            AND ts.mn = m.Month
+            AND ts.Artist_FK = ?
+
+        LEFT JOIN Big16Agg b
+            ON b.yr = m.Year 
+            AND b.mn = m.Month
+            AND b.Artist_FK = ?
+
+        ORDER BY m.Year, m.Month
+        """
+        df = pd.read_sql(query, conn, params=[artist_id, artist_id, artist_id])
+        df = df.astype(object).where(pd.notnull(df), None)
+        return jsonify(df.to_dict(orient="records"))
+    except Exception as e:
+        print("MONTHLY ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
+
+# ==============================
+# SONG PAGES
+# ==============================
+
+@app.route("/song/<int:song_id>")
+def song_page(song_id):
+    return render_template("song.html", song_id=song_id)
+
+@app.route("/api/song/<int:song_id>")
+def get_song(song_id):
+    import pandas as pd
+
+    # ----------------------------
+    # Song info
+    # ----------------------------
+    song_query = """
+    SELECT SongName, A.ID AS ArtistID, ArtistName, Al.ID AS AlbumID, AlbumName
+    FROM tbl_Song S
+    LEFT JOIN tbl_Artist A ON A.ID = S.Artist_FK
+    LEFT JOIN tbl_Album Al ON Al.ID = S.Album_FK
+    WHERE S.ID = ?
+    """
+
+    song_df = pd.read_sql(song_query, conn, params=[song_id])
+
+    if song_df.empty:
+        return jsonify({"error": "Song not found"}), 404
+
+    # ----------------------------
+    # Stats
+    # ----------------------------
+    stats_query = """
+    SELECT 
+        r.Rating,
+        r.Plays,
+        r.TP,
+        r.N1s,
+        r.MIC
+    FROM tbl_Song s
+    LEFT JOIN tbl_SGVSongs r 
+        ON r.Song_FK = s.ID
+    WHERE s.ID = ?
+    AND r.Snapshot_FK = (
+        SELECT MAX(ID) FROM tbl_SGVSnapshot
+    )
+    ORDER BY r.Rating DESC
+    """
+
+    stats_df = pd.read_sql(stats_query, conn, params=[song_id])
+
+    return jsonify({
+        "info": song_df.to_dict(orient="records"),
+        "stats": stats_df.to_dict(orient="records")
+    })
+
+@app.route("/api/song/<int:song_id>/monthly")
+def get_song_monthly(song_id):
+    try:
+        query = """
+        -- Plays per song per month
+        WITH MonthlySongPlays AS (
+            SELECT 
+                YEAR(s.DatetimePlayed) AS yr,
+                MONTH(s.DatetimePlayed) AS mn,
+                s.Song_FK,
+                COUNT(*) AS Plays
+            FROM tbl_Scrobble s
+            GROUP BY 
+                YEAR(s.DatetimePlayed),
+                MONTH(s.DatetimePlayed),
+                s.Song_FK
+        ),
+
+        -- Rank songs per month (only where plays exist)
+        MonthlySongRanks AS (
+            SELECT
+                yr,
+                mn,
+                Song_FK,
+                Plays,
+                RANK() OVER (
+                    PARTITION BY yr, mn
+                    ORDER BY Plays DESC
+                ) AS PlaysRank
+            FROM MonthlySongPlays
+        )
+
+        SELECT 
+            m.Year,
+            m.Month,
+
+            ISNULL(r.PlaysRank, NULL) AS PlaysRank,
+            ISNULL(r.Plays, 0) AS Plays,
+
+            b.Rank AS Big16Rank,
+
+            CASE 
+                WHEN b.Rank = 1 THEN 1 
+                ELSE 0 
+            END AS IsN1
+
+        FROM tbl_Month m
+
+        LEFT JOIN MonthlySongRanks r
+            ON r.yr = m.Year 
+            AND r.mn = m.Month
+            AND r.Song_FK = ?
+
+        LEFT JOIN tbl_Big16 b
+            ON b.Month_FK = m.ID
+            AND b.Song_FK = ?
+
+        ORDER BY m.Year, m.Month
+        """
+
+        df = pd.read_sql(query, conn, params=[song_id, song_id])
+
+        # Safe JSON conversion
+        df = df.astype(object).where(pd.notnull(df), None)
+
+        return jsonify(df.to_dict(orient="records"))
+
+    except Exception as e:
+        print("SONG MONTHLY ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 # ==============================
 # SYNC
@@ -941,9 +1196,34 @@ def now_playing():
         # Check if currently playing
         if "@attr" in track and track["@attr"].get("nowplaying"):
             artist_name, song_name = apply_name_fixes(track.get("artist", {}).get("#text"), track.get("name"))
+
+            artist_id = 0
+            song_id = 0
+
+            cur.execute("""
+                SELECT ID
+                FROM tbl_Artist
+                WHERE ArtistName = ?
+            """, artist_name)
+            row = cur.fetchone()
+            if row:
+                artist_id = row[0]
+
+            cur.execute("""
+                SELECT TOP 1 ID
+                FROM tbl_Song
+                WHERE Artist_FK = ?
+                AND SongName = ?
+            """, artist_id, song_name)
+            row1 = cur.fetchone()
+            if row1:
+                song_id = row[0]
+
             return {
                 "playing": True,
+                "song_id": song_id,
                 "song": song_name,
+                "artist_id": artist_id,
                 "artist": artist_name,
                 "album": track.get("album", {}).get("#text")
             }

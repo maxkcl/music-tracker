@@ -32,7 +32,12 @@ async function updateNowPlaying() {
 
         if (data.playing) {
             banner.classList.remove("hidden");
-            banner.textContent = `Now Playing: ${data.artist} — ${data.song}`;
+            banner.innerHTML = `
+                Now Playing: 
+                ${makeLink(data.artist_id, data.artist, "artist")}
+                — 
+                ${makeLink(data.song_id, data.song, "song")}
+            `;
         } else {
             banner.classList.add("hidden");
         }
@@ -40,6 +45,11 @@ async function updateNowPlaying() {
     } catch (err) {
         console.error("Now playing fetch failed:", err);
     }
+}
+
+function makeLink(id, text, type) {
+    if (!id || id == 0) return text;
+    return `<a href="/${type}/${id}" class="${type}-link">${text}</a>`;
 }
 
 updateNowPlaying(); // initial load

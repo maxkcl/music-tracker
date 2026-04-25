@@ -112,14 +112,6 @@ WHERE SongName = 'Safe & Sound'
 AND Artist_FK = 104
 AND ID != 1529
 
-UPDATE S
-SET S.Song_FK = ?
-FROM tbl_Scrobble S
-JOIN tbl_Song SO ON S.Song_FK = S.ID
-WHERE SO.SongName = ?
-AND SO.Artist_FK = ?
-AND SO.ID != ?
-
 SELECT * FROM tbl_Scrobble S
 LEFT JOIN tbl_Song So ON So.ID = S.Song_FK
 WHERE So.SongName = 'OK'
@@ -249,3 +241,113 @@ WITH LatestSnapshot AS (
     JOIN tbl_Song s ON s.ID = r.Song_FK
     JOIN tbl_Artist a ON a.ID = s.Artist_FK
     WHERE r.N1s > 0
+
+
+
+
+
+
+WITH MonthlyPlays AS (
+    SELECT 
+        YEAR(s.DatetimePlayed) AS yr,
+        MONTH(s.DatetimePlayed) AS mn,
+        so.Artist_FK,
+        COUNT(*) AS Plays
+    FROM tbl_Scrobble s
+    JOIN tbl_Song so ON so.ID = s.Song_FK
+    GROUP BY 
+        YEAR(s.DatetimePlayed),
+        MONTH(s.DatetimePlayed),
+        so.Artist_FK
+),
+
+-- Rank artists per month
+MonthlyRanks AS (
+    SELECT
+        yr,
+        mn,
+        Artist_FK,
+        Plays,
+        RANK() OVER (
+            PARTITION BY yr, mn
+            ORDER BY Plays DESC
+        ) AS PlaysRank
+    FROM MonthlyPlays
+),
+
+-- Top song per artist per month
+TopSongs AS (
+    SELECT *
+    FROM (
+        SELECT 
+            YEAR(s.DatetimePlayed) AS yr,
+            MONTH(s.DatetimePlayed) AS mn,
+            so.Artist_FK,
+            so.SongName,
+            COUNT(*) AS SongPlays,
+            ROW_NUMBER() OVER (
+                PARTITION BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), so.Artist_FK
+                ORDER BY COUNT(*) DESC
+            ) AS rn
+        FROM tbl_Scrobble s
+        JOIN tbl_Song so ON so.ID = s.Song_FK
+        GROUP BY 
+            YEAR(s.DatetimePlayed),
+            MONTH(s.DatetimePlayed),
+            so.Artist_FK,
+            so.SongName
+    ) t
+    WHERE rn = 1
+),
+
+-- Big16 songs per artist per month
+Big16Agg AS (
+    SELECT 
+        m.Year AS yr,
+        m.Month AS mn,
+        so.Artist_FK,
+        COUNT(*) AS Top16Count,
+        STRING_AGG(
+            so.SongName + ' (' + CAST(b.Rank AS VARCHAR) + ')',
+            ', '
+        ) AS Top16Songs
+    FROM tbl_Big16 b
+    JOIN tbl_Song so ON so.ID = b.Song_FK
+    JOIN tbl_Month m ON m.ID = b.Month_FK
+    GROUP BY 
+        m.Year,
+        m.Month,
+        so.Artist_FK
+)
+
+SELECT 
+    m.Year,
+    m.Month,
+
+    ISNULL(r.PlaysRank, NULL) AS PlaysRank,
+    ISNULL(r.Plays, 0) AS Plays,
+
+    ts.SongName AS TopSong,
+    ts.SongPlays AS TopSongPlays,
+
+    ISNULL(b.Top16Count, 0) AS Top16Count,
+    ISNULL(b.Top16Songs, '') AS Top16Songs
+
+FROM tbl_Month m
+
+LEFT JOIN MonthlyRanks r
+    ON r.yr = m.Year 
+    AND r.mn = m.Month
+    AND r.Artist_FK = ?
+
+LEFT JOIN TopSongs ts
+    ON ts.yr = m.Year 
+    AND ts.mn = m.Month
+    AND ts.Artist_FK = ?
+
+LEFT JOIN Big16Agg b
+    ON b.yr = m.Year 
+    AND b.mn = m.Month
+    AND b.Artist_FK = ?
+
+ORDER BY m.Year, m.Month

@@ -1,12 +1,10 @@
-.artist-page {
+.song-page {
     margin-left: 12.5%
 }
 
 /* ===== Cells ===== */
-#artist-monthly th,
-#artist-monthly td,
-#artist-songs th,
-#artist-songs td {
+#song-monthly th,
+#song-monthly td {
     white-space: nowrap;
     padding: 5px 10px;
     border: 1px solid #303030;
@@ -15,16 +13,12 @@
     text-overflow: ellipsis;
 }
 
-#artist-songs td:nth-child(2) {
-    max-width: 300px;
-}
-
-#artist-monthly td:first-child {
+#song-monthly td:first-child {
     min-width: 55px;
     color:#5f5f5f
 }
 
-#artist-monthly td {
+#song-monthly td {
     font-size: 12px;
 }
 

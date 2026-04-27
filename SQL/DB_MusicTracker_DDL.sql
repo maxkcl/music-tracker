@@ -83,6 +83,14 @@ CREATE TABLE tbl_RedirectSong (
     Artist_FK INT REFERENCES tbl_Artist(ID),
     Redirect_FK INT REFERENCES tbl_Song(ID)
 );
+DROP TABLE tbl_RedirectAlbum
+CREATE TABLE tbl_RedirectAlbum (
+    ID INT IDENTITY(1,1) PRIMARY KEY,
+    OldName NVARCHAR(255),
+    Artist_FK INT REFERENCES tbl_Artist(ID),
+    SongName NVARCHAR(255),
+    Redirect_FK INT REFERENCES tbl_Album(ID)
+);
 
 CREATE TABLE tbl_Month (
     ID INT IDENTITY PRIMARY KEY,

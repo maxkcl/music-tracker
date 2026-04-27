@@ -1,42 +1,55 @@
+// ================================================================================================= //
+//
+//  artist.js
+//  - The logic of the individual artist pages.
+//
+// ================================================================================================= //
+
 let showAllMonths = false;
 let fullMonthlyData = [];
 
+// The cutoff is used to distinguish BEFORE and AFTER last.fm scrobbling began.
 const CUTOFF_YEAR = 2020;
 const CUTOFF_MONTH = 12; // December
 
+// Page load
 document.addEventListener("DOMContentLoaded", () => {
+    
+    // Fetch Artist ID from HTML
     const el = document.querySelector(".artist-page");
-
     if (!el) {
         console.error("artist-page element not found");
         return;
     }
-
     const artistId = el.dataset.artistId;
 
-    console.log("Artist ID:", artistId);
+    // Load data
     loadArtist(artistId);
 });
 
+// This function loads artist data from the flask route and begins page rendering.
 async function loadArtist(artistId) {
     try {
         const res = await fetch(`/api/artist/${artistId}`);
         const data = await res.json();
 
-        renderSongs(data.songs);
+        // Renders the summary section of the page and the songs table.
         renderArtistSummary(data.summary[0]);
-
+        renderSongs(data.songs);
+        
+        // Monthly data table. Months before data are trimmed and hidden.
         const trimmed = trimLeadingEmptyMonths(data.monthly);
         fullMonthlyData = trimmed;
         renderMonthlyTable(filterMonths(fullMonthlyData, showAllMonths));
-        
 
     } catch (err) {
         console.error("Fetch failed:", err);
     }
 }
 
+// This function renders the summary and cards at the top of the page.
 function renderArtistSummary(data) {
+
     const container = document.getElementById("artist-summary");
 
     const wins = (data.Wins || "").split(";;").filter(Boolean);
@@ -116,6 +129,7 @@ function renderArtistSummary(data) {
     `;
 }
 
+// This helper function formats date strings into easily displayed months.
 function formatMonth(dateStr) {
     if (!dateStr) return "";
     const d = new Date(dateStr);
@@ -125,6 +139,7 @@ function formatMonth(dateStr) {
     });
 }
 
+// This function formats the earliest date of data an artist has.
 function formatDiscovered(firstPlayed, firstBig16Month) {
     const cutoff = new Date("2020-12-01");
 
@@ -149,10 +164,12 @@ function formatDiscovered(firstPlayed, firstBig16Month) {
     });
 }
 
+// This function renders the monthly data table.
 function renderMonthlyTable(data) {
     
     let html = "<table class='monthly'>";
     
+    // HEADER //
     html += `
         <thead>
             <tr>
@@ -168,13 +185,16 @@ function renderMonthlyTable(data) {
         <tbody>
     `;
 
+    // BODY //
     data.forEach(row => {
         const label = new Date(row.Year, row.Month - 1)
             .toLocaleString("default", { month: "short", year: "numeric" });
         
         const beforeCutoff = isBeforeCutoff(row.Year, row.Month);
         const plays = beforeCutoff ? "" : row.Plays;
+        // If before cutoff, rank is empty. Else, show rank.
         let rank = beforeCutoff ? "" : "#".concat(row.PlaysRank ?? "");
+        // Rank cell should be empty if no plays this month
         if (row.PlaysRank == "") {
             rank = "";
         }
@@ -200,6 +220,7 @@ function renderMonthlyTable(data) {
     document.getElementById("artist-monthly").innerHTML = html;
 }
 
+// This function returns the rows of the monthly data with any leading empty rows removed.
 function trimLeadingEmptyMonths(data) {
     const firstIndex = data.findIndex(row =>
         (row.Plays && row.Plays > 0) ||
@@ -212,6 +233,7 @@ function trimLeadingEmptyMonths(data) {
     return data.slice(firstIndex);
 }
 
+// This function takes in the raw top 16 songs data for the monthly table and formats it nicely.
 function formatTop16Songs(raw) {
     if (!raw) return "";
 
@@ -222,6 +244,7 @@ function formatTop16Songs(raw) {
     }).join(", ");
 }
 
+// This function finds the first active month of an artist. Used to filter empty months.
 function findFirstActiveIndex(data) {
     return data.findIndex(row =>
         (row.Plays && row.Plays > 0) ||
@@ -229,6 +252,7 @@ function findFirstActiveIndex(data) {
     );
 }
 
+// This function filters empty months AFTER the first month of statistics for the artist.
 function filterMonths(data, showAll) {
     const start = findFirstActiveIndex(data);
 
@@ -244,6 +268,8 @@ function filterMonths(data, showAll) {
     );
 }
 
+// This function is called when the "Hide Empty Months / Show All Months" button is pressed.
+// It toggles empty months AFTER the first month of statistics for the artist.
 function toggleMonths() {
     showAllMonths = !showAllMonths;
 
@@ -253,6 +279,7 @@ function toggleMonths() {
     renderMonthlyTable(filterMonths(fullMonthlyData, showAllMonths));
 }
 
+// This function finds out if the artist has the number one song of a month.
 function hasNumberOne(top16Raw) {
     if (!top16Raw) return false;
 
@@ -263,6 +290,7 @@ function hasNumberOne(top16Raw) {
     });
 }
 
+// This function helps find if a month is before last.fm stats tracking or after.
 function isBeforeCutoff(year, month) {
     return (
         year < CUTOFF_YEAR ||
@@ -270,19 +298,23 @@ function isBeforeCutoff(year, month) {
     );
 }
 
+// This function renders the song table.
 function renderSongs(songs) {
     const container = document.getElementById("artist-songs");
 
+    // HEADER //
     let html = "<table>";
     html += "<tr><th>#</th><th style=\"text-align: left;\">Song Name</th><th>OVR</th><th>Plays</th><th>N1s</th><th>B16 Pts</th><th>B16 MIC</th></tr>";
 
-    let i = 1;
+    // BODY //
+    let rank = 1;
     songs.forEach(s => {
+        // highlightClass will display golden cells if song is top song of any month
         const highlightClass = s.N1s > 0 ? "highlight-n1" : "";
         
         html += `
             <tr>
-                <td style="text-align: center;">${i}</td>
+                <td style="text-align: center;">${rank}</td>
                 <td class="${highlightClass}">
                     ${
                         s.ID
@@ -299,7 +331,7 @@ function renderSongs(songs) {
                 <td>${s.MIC}</td>
             </tr>
         `;
-        i++;
+        rank++;
     });
 
     html += "</table>";

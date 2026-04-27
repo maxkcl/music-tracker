@@ -2,7 +2,7 @@ import requests
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from db import get_connection
+from db import get_connection, run_query
 
 # This script fetches and inserts scrobbling data into the SQL database.
 
@@ -186,55 +186,80 @@ def flush_batch(batch):
 # SPELLING FIXES
 # ==============================
 
-def apply_name_fixes(artist_name, song_name):
-    key = (artist_name, song_name)
-    artist_id = None
-
+# This function takes in raw artist, album, and song name data.
+# It returns corrected names consistent with the database.
+# Ex. Artist: Chyl -> CHYL.
+# Album is based on SONG. Ex. SLANDER - Anywhere (Album: Anywhere (feat. shYbeast, PLYA)) -> SLANDER - Anywhere (Album: Anywhere)
+# Song: Not Who I Used to Be (feat. Joey Fleming) -> Not Who I Used to Be
+def apply_name_fixes(artist_name, album_name, song_name):
+    
+    # Caching
+    key = (artist_name, album_name, song_name)
     if key in name_fix_cache:
         return name_fix_cache[key]
-    
-    # Find Artist ID
-    cur.execute("""
+
+    # ----------------------------
+    # Artist ID
+    # ----------------------------
+    artist_df = run_query("""
         SELECT ID
         FROM tbl_Artist
         WHERE ArtistName = ?
-    """, artist_name)
-    row = cur.fetchone()
-    if row:
-        artist_id = row[0]
-    
-    
-    # Artist fix
-    cur.execute("""
-        SELECT A.ID, ArtistName FROM tbl_RedirectArtist RA
+    """, [artist_name])
+
+    artist_id = int(artist_df.iloc[0]["ID"]) if not artist_df.empty else None
+
+    # ----------------------------
+    # Artist redirect
+    # ----------------------------
+    artist_redirect_df = run_query("""
+        SELECT A.ID, A.ArtistName
+        FROM tbl_RedirectArtist RA
         LEFT JOIN tbl_Artist A ON A.ID = RA.Redirect_FK
-        WHERE OldName = ?
-    """, artist_name)
+        WHERE RA.OldName = ?
+    """, [artist_name])
 
-    row = cur.fetchone()
-    if row:
-        artist_id = row[0]
-        artist_name = row[1]
-    
-    # Song fix
-    cur.execute("""
-        SELECT S.SongName FROM tbl_RedirectSong RS
+    if not artist_redirect_df.empty:
+        artist_id = int(artist_redirect_df.iloc[0]["ID"])
+        artist_name = artist_redirect_df.iloc[0]["ArtistName"]
+
+    # ----------------------------
+    # Album redirect
+    # ----------------------------
+    album_df = run_query("""
+        SELECT A.AlbumName
+        FROM tbl_RedirectAlbum RA
+        JOIN tbl_Album A ON A.ID = RA.Redirect_FK
+        WHERE RA.OldName = ?
+        AND RA.SongName = ?
+        AND (RA.Artist_FK IS NULL OR RA.Artist_FK = ?)
+    """, [album_name, song_name, artist_id])
+
+    if not album_df.empty:
+        album_name = album_df.iloc[0]["AlbumName"]
+
+    # ----------------------------
+    # Song redirect
+    # ----------------------------
+    song_df = run_query("""
+        SELECT S.SongName
+        FROM tbl_RedirectSong RS
         LEFT JOIN tbl_Song S ON S.ID = RS.Redirect_FK
-        WHERE OldName = ?
+        WHERE RS.OldName = ?
         AND (RS.Artist_FK IS NULL OR RS.Artist_FK = ?)
-    """, song_name, artist_id)
-    print(artist_id)
-    row = cur.fetchone()
-    if row:
-        song_name = row[0]
+    """, [song_name, artist_id])
 
-    name_fix_cache[key] = (artist_name, song_name)
-    return artist_name, song_name
+    if not song_df.empty:
+        song_name = song_df.iloc[0]["SongName"]
+
+    name_fix_cache[key] = (artist_name, album_name, song_name)
+    return artist_name, album_name, song_name
 
 # ==============================
 # SYNC FUNCTION
 # ==============================
 
+# This function fetches data from last.fm API and pushes it into the database.
 def sync():
     batch = []
     affected_dates = set()
@@ -309,7 +334,7 @@ def sync():
                 artist_name = t["artist"]["#text"] if isinstance(t["artist"], dict) else str(t["artist"])
                 song_name = t["name"]
                 album_name = t["album"]["#text"] if isinstance(t["album"], dict) else str(t["album"])
-                artist_name, song_name = apply_name_fixes(artist_name, song_name)
+                artist_name, album_name, song_name = apply_name_fixes(artist_name, album_name, song_name)
             except KeyError:
                 continue
 

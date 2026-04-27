@@ -132,3 +132,49 @@ ORDER BY ID DESC
 SELECT TOP 1 ID FROM tbl_Song
 WHERE Artist_FK = 544
 AND SongName = 'Waking Up'
+
+SELECT * FROM tbl_SGVSongs SGV
+LEFT JOIN tbl_Song S ON S.ID = SGV.Song_FK
+LEFT JOIN tbl_Artist A ON A.ID = S.Artist_FK
+WHERE A.ArtistName = 'ODESZA'
+AND S.SongName = 'Line of Sight'
+
+SELECT 
+            yr,
+            mn,
+            Plays,
+            RANK() OVER (
+                PARTITION BY yr, mn
+                ORDER BY Plays DESC
+            ) AS PlaysRank
+        FROM (
+            SELECT 
+                YEAR(s.DatetimePlayed) AS yr,
+                MONTH(s.DatetimePlayed) AS mn,
+                s.Song_FK,
+                COUNT(*) AS Plays
+            FROM tbl_Scrobble s
+            GROUP BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), s.Song_FK
+        ) x
+        WHERE Song_FK = 63
+
+WITH RankedSongs AS (
+    SELECT 
+        YEAR(s.DatetimePlayed) AS yr,
+        MONTH(s.DatetimePlayed) AS mn,
+        s.Song_FK,
+        COUNT(*) AS Plays,
+        RANK() OVER (
+            PARTITION BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed)
+            ORDER BY COUNT(*) DESC
+        ) AS PlaysRank
+    FROM tbl_Scrobble s
+    GROUP BY 
+        YEAR(s.DatetimePlayed), 
+        MONTH(s.DatetimePlayed), 
+        s.Song_FK
+)
+
+SELECT *
+FROM RankedSongs
+WHERE Song_FK = ?

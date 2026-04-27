@@ -11,7 +11,7 @@ async function loadRatings() {
             alert(data.error);
             return;
         }
-        console.log(data);
+        
         renderSongTable(data);
 
     } catch (err) {

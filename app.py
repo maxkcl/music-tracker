@@ -2,9 +2,10 @@ from flask import Flask, render_template, request, jsonify
 import pyodbc
 import pandas as pd
 import subprocess
-from db import get_connection
+from db import get_connection, run_execute, run_multi, run_query, run_snapshot_transaction, replace_na, run_transaction, run_transaction_fn
 from fetch import apply_name_fixes
 import time
+import math
 
 app = Flask(__name__)
 
@@ -14,58 +15,68 @@ USERNAME = "maxkcl"
 BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
 # ==============================
-# DB CONNECTION
+# DB Connection
 # ==============================
+#region DB Connection
 
 conn, cur = get_connection()
 
-def run_query(query, params=None, one=False):
-    import pyodbc
-    import pandas as pd
-
-    conn, cur = get_connection()
-
-    try:
-        df = pd.read_sql_query(query, conn, params=params)
-
-        # force full materialization (important)
-        df = df.copy()
-
-        if one:
-            return df.to_dict(orient="records")[0] if not df.empty else None
-
-        return df.to_dict(orient="records")
-
-    finally:
-        conn.close()
-
-def run_multi(query_list, params_list):
-    import pyodbc
-    import pandas as pd
-
-    conn, cur = get_connection()
-
-    try:
-        results = []
-
-        for q, p in zip(query_list, params_list):
-            df = pd.read_sql_query(q, conn, params=p)
-            df = df.copy()
-            results.append(df)
-
-        return results
-
-    finally:
-        conn.close()
-
-def replace_na(df):
-    df = df.replace([float("inf"), float("-inf")], None)
-    df = df.fillna("")
-    return df
+#endregion
 
 # ==============================
-# PAGE CACHING
+# HELPERS
 # ==============================
+#region Helpers
+
+def safe_int(x):
+    import math
+    return int(x) if x is not None and not math.isnan(x) else 0
+
+def safe_float(x):
+    import math
+    return float(x) if x is not None and not math.isnan(x) else 0.0
+
+#endregion
+
+# ==============================
+# ROUTES
+# ==============================
+#region Routes
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/songlist_page")
+def songlist_page():
+    return render_template("songlist.html")
+
+@app.route("/sheetscup_page")
+def sheetscup_page():
+    return render_template("sheetscup.html")
+
+@app.route("/big16_page")
+def big16_page():
+    return render_template("big16.html")
+
+@app.route("/sgv_page")
+def sgv_page():
+    return render_template("sgv.html")
+
+@app.route("/artist/<int:artist_id>")
+def artist_page(artist_id):
+    return render_template("artist.html", artist_id=artist_id)
+
+@app.route("/song/<int:song_id>")
+def song_page(song_id):
+    return render_template("song.html", song_id=song_id)
+
+#endregion
+
+# ==============================
+# ARTIST / SONG PAGE CACHING
+# ==============================
+#region Page Cache
 
 ARTIST_CACHE = {}
 SONG_CACHE = {}
@@ -93,39 +104,18 @@ def get_cached_song(song_id):
             return data
     return None
 
-
 def set_cached_song(song_id, data):
     import time
     SONG_CACHE[song_id] = (data, time.time())
 
-# ==============================
-# ROUTES
-# ==============================
+#endregion
 
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-@app.route("/songlist_page")
-def songlist_page():
-    return render_template("songlist.html")
-
-@app.route("/sheetscup_page")
-def sheetscup_page():
-    return render_template("sheetscup.html")
-
-@app.route("/big16_page")
-def big16_page():
-    return render_template("big16.html")
-
-@app.route("/sgv_page")
-def sgv_page():
-    return render_template("sgv.html")
-
-# ==============================
+# ============================== ** REVAMP NEEDED **
 # QUERY BUILDER
 # ==============================
+#region Query Builder
 
+# This function is a mess and needs to be revamped completely.
 @app.route("/api/query-builder", methods=["POST"])
 def query_builder():
     from flask import request, jsonify
@@ -294,9 +284,12 @@ def query_builder():
 
     return jsonify(results)
 
+#endregion
+
 # ==============================
 # SPELLING FIXES
 # ==============================
+#region Spelling Fixes
 
 @app.route("/artists")
 def get_artists():
@@ -328,7 +321,6 @@ def get_songs():
 @app.route("/apply_fix", methods=["POST"])
 def apply_fix():
     data = request.json
-
     artist_id = int(data.get("artist_id"))
     song = data.get("song")
     new_name = data.get("new_name")
@@ -337,137 +329,91 @@ def apply_fix():
         return {"status": "error", "message": "Missing fields"}, 400
 
     try:
-        # Get artist name
-        cur.execute("SELECT ArtistName FROM tbl_Artist WHERE ID = ?", artist_id)
-        artist_row = cur.fetchone()
+        def txn(cur):
 
-        if not artist_row:
-            return {"status": "error", "message": "Artist not found"}
-
-        artist_name = artist_row[0]
-
-        if song:
-            # 🎵 SONG FIX
-
-            # Get current song ID
-            cur.execute("""
-                SELECT ID FROM tbl_Song
-                WHERE SongName = ? AND Artist_FK = ?
-            """, song, artist_id)
-
-            row = cur.fetchone()
-            if not row:
-                return {"status": "error", "message": "Song not found"}
-
-            song_id = row[0]
-            old_name = song
-
-            # Check for duplicate (case-sensitive, excluding self)
-            cur.execute("""
-                SELECT ID FROM tbl_Song
-                WHERE SongName COLLATE Latin1_General_CS_AS = ?
-                AND Artist_FK = ?
-                AND ID != ?
-            """, new_name, artist_id, song_id)
-            dup = cur.fetchone()
-            if dup:
-                duplicate_id = dup[0]
-
-                # Merge: update all scrobbles to point to the new name
-                cur.execute("""
-                    UPDATE tbl_Scrobble
-                    SET Song_FK = ?
-                    WHERE Song_FK = ?
-                """, (duplicate_id, song_id))
-                cur.execute(f"""
-                    UPDATE tbl_Day
-                    SET TopSong_FK = ?
-                    WHERE TopSong_FK = ?
-                """, (duplicate_id, song_id))
-                cur.execute(f"""
-                    UPDATE tbl_SGVSongs
-                    SET Song_FK = ?
-                    WHERE Song_FK = ?
-                """, (duplicate_id, song_id))
-                cur.execute(f"""
-                    UPDATE tbl_RedirectSong
-                    SET Redirect_FK = ?
-                    WHERE Redirect_FK = ?
-                """, (duplicate_id, song_id))
-
-                # Delete the old song row
-                cur.execute("""
-                    DELETE FROM tbl_Song
-                    WHERE ID = ?
-                """, (song_id,))
-
-                # Save mapping in tbl_RedirectSong
-                cur.execute("""
-                    INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
-                    VALUES (?, ?, ?)
-                """, (old_name, artist_id, duplicate_id))
-            else:
-                # Safe to update
-                cur.execute("""
-                    UPDATE tbl_Song
-                    SET SongName = ?
-                    WHERE ID = ?
-                """, new_name, song_id)
-
-                # ✅ Save mapping
-                cur.execute("""
-                    INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
-                    VALUES (?, ?, ?)
-                """, (old_name, artist_id, song_id))
-
-        else:
-            # 🎤 ARTIST FIX
-
-            # Check if artist exists
-            cur.execute("""
-                SELECT ArtistName FROM tbl_Artist
-                WHERE ID = ?
-            """, artist_id)
-
+            # Get artist
+            cur.execute("SELECT ArtistName FROM tbl_Artist WHERE ID = ?", artist_id)
             row = cur.fetchone()
             if not row:
                 return {"status": "error", "message": "Artist not found"}
 
-            old_name = row[0]
+            artist_name = row[0]
 
-            # Case-sensitive duplicate check (exclude current artist)
-            cur.execute("""
-                SELECT 1 FROM tbl_Artist
-                WHERE ArtistName COLLATE Latin1_General_CS_AS = ?
-                AND ID != ?
-            """, new_name, artist_id)
+            if song:
+                # --- SONG FIX ---
+                cur.execute("""
+                    SELECT ID FROM tbl_Song
+                    WHERE SongName = ? AND Artist_FK = ?
+                """, song, artist_id)
 
-            if cur.fetchone():
-                return {"status": "error", "message": "Artist with that name already exists"}
+                row = cur.fetchone()
+                if not row:
+                    return {"status": "error", "message": "Song not found"}
 
-            # ✅ Update artist name
-            cur.execute("""
-                UPDATE tbl_Artist
-                SET ArtistName = ?
-                WHERE ID = ?
-            """, new_name, artist_id)
+                song_id = row[0]
 
-            if cur.rowcount == 0:
-                return {"status": "error", "message": "Update failed"}
+                # Look for duplicate
+                cur.execute("""
+                    SELECT ID FROM tbl_Song
+                    WHERE SongName COLLATE Latin1_General_CS_AS = ?
+                    AND Artist_FK = ?
+                    AND ID != ?
+                """, new_name, artist_id, song_id)
 
-            # ✅ Save mapping
-            cur.execute("""
-                INSERT INTO tbl_RedirectArtist (OldName, Redirect_FK)
-                VALUES (?, ?)
-            """, old_name, artist_id)
+                dup = cur.fetchone()
 
-        conn.commit()
-        return {"status": "ok"}
+                # If there is a song already with the name from the artist, merge them together.
+                # Importantly, merge the first song into the duplicate (canonical) song.
+                if dup:
+                    duplicate_id = dup[0]
+
+                    cur.execute("UPDATE tbl_Scrobble SET Song_FK = ? WHERE Song_FK = ?", duplicate_id, song_id)
+                    cur.execute("UPDATE tbl_Day SET TopSong_FK = ? WHERE TopSong_FK = ?", duplicate_id, song_id)
+                    cur.execute("UPDATE tbl_SGVSongs SET Song_FK = ? WHERE Song_FK = ?", duplicate_id, song_id)
+
+                    cur.execute("DELETE FROM tbl_Song WHERE ID = ?", song_id)
+
+                    cur.execute("""
+                        INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+                        VALUES (?, ?, ?)
+                    """, song, artist_id, duplicate_id)
+
+                else:
+                    cur.execute("""
+                        UPDATE tbl_Song SET SongName = ? WHERE ID = ?
+                    """, new_name, song_id)
+
+                    cur.execute("""
+                        INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
+                        VALUES (?, ?, ?)
+                    """, song, artist_id, song_id)
+
+            else:
+                # --- ARTIST FIX ---
+                cur.execute("""
+                    SELECT 1 FROM tbl_Artist
+                    WHERE ArtistName COLLATE Latin1_General_CS_AS = ?
+                    AND ID != ?
+                """, new_name, artist_id)
+
+                if cur.fetchone():
+                    return {"status": "error", "message": "Artist already exists"}
+
+                cur.execute("""
+                    UPDATE tbl_Artist SET ArtistName = ? WHERE ID = ?
+                """, new_name, artist_id)
+
+                cur.execute("""
+                    INSERT INTO tbl_RedirectArtist (OldName, Redirect_FK)
+                    VALUES (?, ?)
+                """, artist_name, artist_id)
+
+            return {"status": "ok"}
+
+        return run_transaction_fn(txn)
 
     except Exception as e:
-        print("❌ APPLY FIX ERROR:", e)
-        conn.rollback()
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": str(e)}, 500
 
 # Song duplicate merger
 @app.route("/api/song-duplicates")
@@ -489,7 +435,7 @@ def get_song_duplicates():
     ORDER BY total_plays DESC
     """
 
-    df = pd.read_sql(query, conn)
+    df = run_query(query)
     return jsonify(df.to_dict(orient="records"))
 
 @app.route("/api/song-duplicates/details")
@@ -511,8 +457,7 @@ def get_duplicate_details():
     ORDER BY plays DESC
     """
 
-    import pandas as pd
-    df = pd.read_sql(query, conn, params=[song, artist_fk])
+    df = run_query(query, params=[song, artist_fk])
 
     return jsonify(df.to_dict(orient="records"))
 
@@ -524,59 +469,128 @@ def merge_duplicates():
     artist_id = int(data.get("artist_id"))
     canon_id = int(data.get("canon_id"))
     song_ids = [int(sid) for sid in data.get("song_ids")]
-    
+
     if not all([canon_id, song_name, artist_id]):
         return {"status": "error", "message": "Missing parameters"}, 400
 
     try:
-        # Remove canonical ID
         duplicate_ids = [sid for sid in song_ids if sid != canon_id]
 
         if canon_id in duplicate_ids:
             return jsonify({"error": "Canonical ID included in delete set"}), 400
 
-        placeholders = ",".join("?" * len(duplicate_ids))
+        # ----------------------------
+        # Fetch canonical album
+        # ----------------------------
+        canon_album = run_query("""
+            SELECT Album_FK
+            FROM tbl_Song
+            WHERE ID = ?
+        """, [canon_id], one=True)
 
-        # Update ONLY duplicate IDs
-        cur.execute(f"""
-            UPDATE tbl_Scrobble
-            SET Song_FK = ?
-            WHERE Song_FK IN ({placeholders})
-        """, [canon_id] + duplicate_ids)
-        cur.execute(f"""
-            UPDATE tbl_Day
-            SET TopSong_FK = ?
-            WHERE TopSong_FK IN ({placeholders})
-        """, [canon_id] + duplicate_ids)
-        cur.execute(f"""
-            UPDATE tbl_RedirectSong
-            SET Redirect_FK = ?
-            WHERE Redirect_FK IN ({placeholders})
-        """, [canon_id] + duplicate_ids)
+        canon_album_id = canon_album["Album_FK"]
 
-        # Delete ONLY those
-        cur.execute(f"""
-            DELETE FROM tbl_Song
-            WHERE ID IN ({placeholders})
-        """, duplicate_ids)
+        # ----------------------------
+        # Fetch duplicate album names
+        # ----------------------------
+        if duplicate_ids:
+            placeholders = ",".join("?" * len(duplicate_ids))
 
-        # Save mapping in tbl_RedirectSong
-        cur.execute("""
+            album_df = run_query(f"""
+                SELECT DISTINCT a.AlbumName
+                FROM tbl_Song s
+                JOIN tbl_Album a ON a.ID = s.Album_FK
+                WHERE s.ID IN ({placeholders})
+            """, duplicate_ids)
+
+            album_names = album_df["AlbumName"].tolist()
+        else:
+            album_names = []
+
+        # ----------------------------
+        # Build transaction
+        # ----------------------------
+        queries = []
+
+        if duplicate_ids:
+            placeholders = ",".join("?" * len(duplicate_ids))
+
+            queries.extend([
+                (f"""
+                    UPDATE tbl_Scrobble
+                    SET Song_FK = ?
+                    WHERE Song_FK IN ({placeholders})
+                """, [canon_id] + duplicate_ids),
+
+                (f"""
+                    UPDATE tbl_Day
+                    SET TopSong_FK = ?
+                    WHERE TopSong_FK IN ({placeholders})
+                """, [canon_id] + duplicate_ids),
+
+                (f"""
+                    UPDATE tbl_SGVSongs
+                    SET Song_FK = ?
+                    WHERE Song_FK IN ({placeholders})
+                """, [canon_id] + duplicate_ids),
+
+                (f"""
+                    UPDATE tbl_RedirectSong
+                    SET Redirect_FK = ?
+                    WHERE Redirect_FK IN ({placeholders})
+                """, [canon_id] + duplicate_ids),
+
+                (f"""
+                    DELETE FROM tbl_Song
+                    WHERE ID IN ({placeholders})
+                """, duplicate_ids),
+            ])
+
+        # Song redirect
+        queries.append((
+            """
             INSERT INTO tbl_RedirectSong (OldName, Artist_FK, Redirect_FK)
             VALUES (?, ?, ?)
-        """, (song_name, artist_id, canon_id))
+            """,
+            [song_name, artist_id, canon_id]
+        ))
 
-        conn.commit()
+        # Album redirects
+        for album_name in album_names:
+            queries.append((
+                """
+                INSERT INTO tbl_RedirectAlbum (OldName, SongName, Artist_FK, Redirect_FK)
+                SELECT ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM tbl_RedirectAlbum
+                    WHERE OldName = ?
+                    AND SongName = ?
+                    AND Artist_FK = ?
+                )
+                """,
+                [
+                    album_name, song_name, artist_id, canon_album_id,
+                    album_name, song_name, artist_id
+                ]
+            ))
+
+        # ----------------------------
+        # Execute
+        # ----------------------------
+        run_transaction(queries)
+
         return jsonify({"status": "ok"})
 
     except Exception as e:
-        print("❌ APPLY FIX ERROR:", e)
-        conn.rollback()
+        print("❌ MERGE ERROR:", e)
         return jsonify({"status": "error", "message": str(e)})
+
+#endregion
 
 # ==============================
 # SONG LIST
 # ==============================
+#region Song List
 
 @app.route("/api/songlist")
 def get_songlist():
@@ -622,7 +636,7 @@ def get_songlist():
     ORDER BY value DESC
     """
 
-    df = pd.read_sql(query, conn, params=params)
+    df = run_query(query, params=params)
 
     results = []
     for _, row in df.iterrows():
@@ -640,10 +654,14 @@ def get_songlist():
 
     return jsonify(results)
 
+#endregion
+
 # ==============================
 # SHEETS CUP
 # ==============================
+#region Sheets Cup
 
+# This route fetches Sheets Cup data to display on its page.
 @app.route("/api/sheetscup")
 def get_sheetscup():
     import pandas as pd
@@ -674,14 +692,18 @@ def get_sheetscup():
     ORDER BY yr, mn, plays DESC
     """
 
-    df = pd.read_sql(query, conn)
+    df = run_query(query)
 
     return jsonify(df.to_dict(orient="records"))
+
+#endregion
 
 # ==============================
 # BIG 16
 # ==============================
+#region Big 16
 
+# This route fetches Big 16 data to display on its page.
 @app.route("/api/big16")
 def get_big16():
     import pandas as pd
@@ -722,14 +744,18 @@ def get_big16():
     ORDER BY M.MonthDate, B.Rank
     """
     
-    df = pd.read_sql(query, conn)
+    df = run_query(query)
 
     return jsonify(df.to_dict(orient="records"))
 
+#endregion
 
 # ==============================
 # SGV
 # ==============================
+#region SGV
+
+# This function builds the ratings .
 @app.route('/api/sgv-build-songs', methods=['GET'])
 def build_song_ratings():
     """
@@ -796,7 +822,7 @@ def build_song_ratings():
         LEFT JOIN tbl_Album al ON al.ID = s.Album_FK
     """
 
-    df = pd.read_sql(query, conn)
+    df = run_query(query)
 
     # ----------------------------
     # Safe normalization helper
@@ -853,69 +879,72 @@ def build_song_ratings():
 
     return df
 
+# This function updates the ratings of all songs based on statistics at time of sync.
 @app.route("/api/sgv-update-ratings", methods=["POST"])
 def sgv_update_ratings():
     try:
         df = build_song_ratings()
 
         # ----------------------------
-        # Create snapshot row
+        # Prepare rows
         # ----------------------------
-
-        cur.execute("INSERT INTO tbl_SGVSnapshot DEFAULT VALUES")
-        conn.commit()
-
-        snapshot_id = cur.execute("SELECT SCOPE_IDENTITY()").fetchone()[0]
-
-        # ----------------------------
-        # Insert song data
-        # ----------------------------
-
         rows = [
             (
-                snapshot_id,
-                int(row.ID),
-                int(row.rating),
-                int(row.TotalPoints),
-                int(row.FirstPlaces),
-                int(row.Appearances),
-                int(row.TotalScrobbles),
-                int(row.DecayedScrobbles),
-                float(row.base_rating),
-                float(row.legacy_n),
-                float(row.recency_n)
+                # snapshot_id goes later
+                safe_int(row.ID),
+                safe_int(row.rating),
+                safe_int(row.TotalPoints),
+                safe_int(row.FirstPlaces),
+                safe_int(row.Appearances),
+                safe_int(row.TotalScrobbles),
+                safe_int(row.DecayedScrobbles),
+                safe_float(row.base_rating),
+                safe_float(row.legacy_n),
+                safe_float(row.recency_n)
             )
-            for _, row in df.iterrows()
+            for row in df.itertuples(index=False)
         ]
 
-        cur.executemany("""
-            INSERT INTO tbl_SGVSongs
-            (Snapshot_FK, Song_FK, Rating, TP, N1s, MIC, Plays, DecayedPlays, BaseRating, LegacyScore, RecencyScore)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, rows)
+        # ----------------------------
+        # Queries
+        # ----------------------------
+        insert_snapshot_sql = """
+        INSERT INTO tbl_SGVSnapshot
+        OUTPUT INSERTED.ID
+        DEFAULT VALUES
+        """
 
-        conn.commit()
+        insert_songs_sql = """
+        INSERT INTO tbl_SGVSongs
+        (Snapshot_FK, Song_FK, Rating, TP, N1s, MIC, Plays, DecayedPlays, BaseRating, LegacyScore, RecencyScore)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        snapshot_id = run_snapshot_transaction(insert_snapshot_sql, insert_songs_sql, rows)
 
         return jsonify({"status": "success", "snapshot_id": snapshot_id})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# This function fetches the latest rating snapshot for all SGV songs.
 @app.route("/api/sgv-get-ratings")
 def get_latest_ratings():
-    import json
-    from flask import Response
-
     query = """
-    WITH SnapshotBounds AS (
-        SELECT
-            MAX(ID) AS LatestID,
-            MIN(CASE 
-                WHEN CreatedAt >= DATEADD(DAY, -30, GETDATE()) 
-                THEN ID 
-            END) AS Earliest30ID
+    SET NOCOUNT ON;
+
+    DECLARE @LatestID INT;
+    DECLARE @EarliestID INT;
+
+    SELECT @LatestID = MAX(ID)
+    FROM tbl_SGVSnapshot;
+
+    SELECT @EarliestID = (
+        SELECT TOP 1 ID
         FROM tbl_SGVSnapshot
-    )
+        WHERE CreatedAt >= DATEADD(DAY, -30, GETDATE())
+        ORDER BY CreatedAt ASC
+    );
 
     SELECT 
         s.ID AS SongID,
@@ -934,13 +963,10 @@ def get_latest_ratings():
 
         (cur.Rating - ISNULL(prev.Rating, cur.Rating)) AS RatingDiff
 
-    FROM SnapshotBounds sb
-
-    JOIN tbl_SGVSongs cur
-        ON cur.Snapshot_FK = sb.LatestID
+    FROM tbl_SGVSongs cur
 
     LEFT JOIN tbl_SGVSongs prev
-        ON prev.Snapshot_FK = sb.Earliest30ID
+        ON prev.Snapshot_FK = @EarliestID
         AND prev.Song_FK = cur.Song_FK
 
     JOIN tbl_Song s 
@@ -949,26 +975,27 @@ def get_latest_ratings():
     JOIN tbl_Artist a 
         ON a.ID = s.Artist_FK
 
-    ORDER BY cur.Rating DESC
+    WHERE cur.Snapshot_FK = @LatestID
+
+    ORDER BY cur.Rating DESC;
     """
 
-    df = pd.read_sql(query, conn)
+    df = run_query(query)
 
     df = df.replace([float("inf"), float("-inf")], None)
-    df = df.fillna("")
-    
-    return Response(
-        json.dumps(df.to_dict(orient="records"), default=str),
-        mimetype="application/json"
-    )
+    df = df.where(df.notnull(), None)
+
+    return df.to_json(orient="records")
+
+#endregion
 
 # ==============================
-# BIG BOY TIME - ARTIST PAGE
+# ARTIST PAGES
 # ==============================
-@app.route("/artist/<int:artist_id>")
-def artist_page(artist_id):
-    return render_template("artist.html", artist_id=artist_id)
+#region Artist Pages
 
+# This function runs when the page is loaded and fetches ALL the
+# data needed to display on the page.
 @app.route("/api/artist/<int:artist_id>")
 def get_artist(artist_id):
 
@@ -1289,14 +1316,17 @@ def get_artist(artist_id):
             aw.Wins
         """
 
+    # Runs all SQL queries and returns in dfs.
     songs_df, monthly_df, summary_df = run_multi(
         [songs_query, monthly_query, summary_query],
         [[artist_id], [artist_id, artist_id, artist_id], [artist_id]]
     )
 
+    # If artist is empty, don't bother!
     if summary_df.empty:
         return jsonify({"error": "Artist not found"}), 404
 
+    # Replace NAs
     songs_df, monthly_df, summary_df = replace_na(songs_df), replace_na(monthly_df), replace_na(summary_df)
 
     response = {
@@ -1309,14 +1339,15 @@ def get_artist(artist_id):
 
     return jsonify(response)
 
+#endregion
+
 # ==============================
 # SONG PAGES
 # ==============================
+#region Song Pages
 
-@app.route("/song/<int:song_id>")
-def song_page(song_id):
-    return render_template("song.html", song_id=song_id)
-
+# This function runs when the page is loaded and fetches ALL the
+# data needed to display on the page.
 @app.route("/api/song/<int:song_id>")
 def get_song(song_id):
     
@@ -1388,24 +1419,26 @@ def get_song(song_id):
         GROUP BY YEAR(DatetimePlayed), MONTH(DatetimePlayed)
     ),
 
-    MonthlyRanks AS (
+    RankedSongs AS (
         SELECT 
-            yr,
-            mn,
-            Plays,
+            YEAR(s.DatetimePlayed) AS yr,
+            MONTH(s.DatetimePlayed) AS mn,
+            s.Song_FK,
+            COUNT(*) AS Plays,
             RANK() OVER (
-                PARTITION BY yr, mn
-                ORDER BY Plays DESC
+                PARTITION BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed)
+                ORDER BY COUNT(*) DESC
             ) AS PlaysRank
-        FROM (
-            SELECT 
-                YEAR(s.DatetimePlayed) AS yr,
-                MONTH(s.DatetimePlayed) AS mn,
-                s.Song_FK,
-                COUNT(*) AS Plays
-            FROM tbl_Scrobble s
-            GROUP BY YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), s.Song_FK
-        ) x
+        FROM tbl_Scrobble s
+        GROUP BY 
+            YEAR(s.DatetimePlayed), 
+            MONTH(s.DatetimePlayed), 
+            s.Song_FK
+    ),
+
+    MonthlyRanks AS (
+        SELECT *
+        FROM RankedSongs
         WHERE Song_FK = ?
     ),
 
@@ -1424,7 +1457,12 @@ def get_song(song_id):
         m.Month,
         mp.Plays,
         mr.PlaysRank,
-        b.Big16Rank
+        b.Big16Rank,
+        CASE 
+            WHEN Big16Rank = 1 THEN 1
+            ELSE 0
+        END AS IsN1
+
     FROM tbl_Month m
     LEFT JOIN MonthlyPlays mp 
         ON mp.yr = m.Year AND mp.mn = m.Month
@@ -1435,16 +1473,20 @@ def get_song(song_id):
     ORDER BY m.Year, m.Month
     """
 
+    # Run SQL queries and store in df
     song_df, summary_df, monthly_df = run_multi(
         [song_query, summary_query, monthly_query],
         [[song_id], [song_id, song_id, song_id], [song_id, song_id, song_id]]
     )
 
+    # Check if there are results
     if song_df.empty:
         return jsonify({"error": "Song not found"}), 404
 
+    # Replace NAs
     song_df, monthly_df, summary_df = replace_na(song_df), replace_na(monthly_df), replace_na(summary_df)
 
+    # Convert to dictionary
     song = song_df.iloc[0].to_dict()
     summary = summary_df.iloc[0].to_dict() if not summary_df.empty else {}
 
@@ -1458,9 +1500,12 @@ def get_song(song_id):
 
     return jsonify(response)
 
+#endregion
+
 # ==============================
 # SYNC
 # ==============================
+#region Sync
 
 @app.route('/run-fetch', methods=['POST'])
 def run_fetch():
@@ -1479,144 +1524,135 @@ def run_fetch():
     except subprocess.CalledProcessError as e:
         return jsonify({'success': False, 'error': e.stderr})
 
+# This function updates tbl_Day and tbl_Month
 def update_daily_stats():
     try:
-        # ----------------------------
-        # 1. Insert missing months
-        # ----------------------------
-        insert_months_sql = """
-        INSERT INTO tbl_Month (MonthDate, Year, Month)
-        SELECT MonthDate, Year, Month
-        FROM (
-            SELECT DISTINCT
-                DATEFROMPARTS(YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), 1) AS MonthDate,
-                YEAR(s.DatetimePlayed) AS Year,
-                MONTH(s.DatetimePlayed) AS Month
-            FROM tbl_Scrobble s
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM tbl_Month m
-                WHERE m.Year = YEAR(s.DatetimePlayed)
-                AND m.Month = MONTH(s.DatetimePlayed)
+        queries = [
+
+            # ----------------------------
+            # 1. Insert missing months
+            # ----------------------------
+            ("""
+            INSERT INTO tbl_Month (MonthDate, Year, Month)
+            SELECT MonthDate, Year, Month
+            FROM (
+                SELECT DISTINCT
+                    DATEFROMPARTS(YEAR(s.DatetimePlayed), MONTH(s.DatetimePlayed), 1) AS MonthDate,
+                    YEAR(s.DatetimePlayed) AS Year,
+                    MONTH(s.DatetimePlayed) AS Month
+                FROM tbl_Scrobble s
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM tbl_Month m
+                    WHERE m.Year = YEAR(s.DatetimePlayed)
+                    AND m.Month = MONTH(s.DatetimePlayed)
+                )
+            ) x
+            """, None),
+
+            # ----------------------------
+            # 2. Clear tbl_Day
+            # ----------------------------
+            ("DELETE FROM tbl_Day;", None),
+
+            # ----------------------------
+            # 3. Insert all days
+            # ----------------------------
+            ("""
+            ;WITH AllDays AS (
+                SELECT CAST('2020-12-03' AS DATE) AS DayDate
+                UNION ALL
+                SELECT DATEADD(DAY, 1, DayDate)
+                FROM AllDays
+                WHERE DayDate < CAST(GETDATE() AS DATE)
             )
-        ) x
-        ORDER BY Year, Month;
-        """
-
-        cur.execute(insert_months_sql)
-        print("Months inserted:", cur.rowcount)
-
-
-        # ----------------------------
-        # 2. Rebuild tbl_Day
-        # ----------------------------
-
-        # Clear existing
-        cur.execute("DELETE FROM tbl_Day;")
-
-
-        # Insert all days
-        insert_days_sql = """
-        ;WITH AllDays AS (
-            SELECT CAST('2020-12-03' AS DATE) AS DayDate
-            UNION ALL
-            SELECT DATEADD(DAY, 1, DayDate)
+            INSERT INTO tbl_Day (DayDate)
+            SELECT DayDate
             FROM AllDays
-            WHERE DayDate < CAST(GETDATE() AS DATE)
-        )
-        INSERT INTO tbl_Day (DayDate)
-        SELECT DayDate
-        FROM AllDays
-        OPTION (MAXRECURSION 0);
-        """
+            OPTION (MAXRECURSION 0);
+            """, None),
 
-        cur.execute(insert_days_sql)
+            # ----------------------------
+            # 4. Update total plays
+            # ----------------------------
+            ("""
+            UPDATE d
+            SET d.NumPlays = s.PlayCount
+            FROM tbl_Day d
+            JOIN (
+                SELECT CAST(DatetimePlayed AS DATE) AS DayDate, COUNT(*) AS PlayCount
+                FROM tbl_Scrobble
+                GROUP BY CAST(DatetimePlayed AS DATE)
+            ) s ON d.DayDate = s.DayDate;
+            """, None),
 
+            # ----------------------------
+            # 5. Update top song
+            # ----------------------------
+            ("""
+            ;WITH SongRank AS (
+                SELECT 
+                    CAST(s.DatetimePlayed AS DATE) AS DayDate,
+                    so.ID,
+                    COUNT(*) AS Plays,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY CAST(s.DatetimePlayed AS DATE)
+                        ORDER BY COUNT(*) DESC
+                    ) AS rn
+                FROM tbl_Scrobble s
+                JOIN tbl_Song so ON s.Song_FK = so.ID
+                GROUP BY CAST(s.DatetimePlayed AS DATE), so.ID
+            )
+            UPDATE d
+            SET d.TopSong_FK = sr.ID,
+                d.TopSongPlays = sr.Plays
+            FROM tbl_Day d
+            JOIN SongRank sr 
+                ON d.DayDate = sr.DayDate 
+                AND sr.rn = 1;
+            """, None),
 
-        # Update total plays
-        update_plays_sql = """
-        UPDATE d
-        SET d.NumPlays = s.PlayCount
-        FROM tbl_Day d
-        JOIN (
-            SELECT CAST(DatetimePlayed AS DATE) AS DayDate, COUNT(*) AS PlayCount
-            FROM tbl_Scrobble
-            GROUP BY CAST(DatetimePlayed AS DATE)
-        ) s ON d.DayDate = s.DayDate;
-        """
+            # ----------------------------
+            # 6. Update top artist
+            # ----------------------------
+            ("""
+            ;WITH ArtistRank AS (
+                SELECT 
+                    CAST(s.DatetimePlayed AS DATE) AS DayDate,
+                    a.ID,
+                    COUNT(*) AS Plays,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY CAST(s.DatetimePlayed AS DATE)
+                        ORDER BY COUNT(*) DESC
+                    ) AS rn
+                FROM tbl_Scrobble s
+                JOIN tbl_Song so ON s.Song_FK = so.ID
+                JOIN tbl_Artist a ON so.Artist_FK = a.ID
+                GROUP BY CAST(s.DatetimePlayed AS DATE), a.ID
+            )
+            UPDATE d
+            SET d.TopArtist_FK = ar.ID,
+                d.TopArtistPlays = ar.Plays
+            FROM tbl_Day d
+            JOIN ArtistRank ar 
+                ON d.DayDate = ar.DayDate 
+                AND ar.rn = 1;
+            """, None),
+        ]
 
-        cur.execute(update_plays_sql)
-
-
-        # Update top song
-        update_top_song_sql = """
-        ;WITH SongRank AS (
-            SELECT 
-                CAST(s.DatetimePlayed AS DATE) AS DayDate,
-                so.ID,
-                COUNT(*) AS Plays,
-                ROW_NUMBER() OVER (
-                    PARTITION BY CAST(s.DatetimePlayed AS DATE)
-                    ORDER BY COUNT(*) DESC
-                ) AS rn
-            FROM tbl_Scrobble s
-            JOIN tbl_Song so ON s.Song_FK = so.ID
-            GROUP BY CAST(s.DatetimePlayed AS DATE), so.ID
-        )
-        UPDATE d
-        SET d.TopSong_FK = sr.ID,
-            d.TopSongPlays = sr.Plays
-        FROM tbl_Day d
-        JOIN SongRank sr 
-            ON d.DayDate = sr.DayDate 
-            AND sr.rn = 1;
-        """
-
-        cur.execute(update_top_song_sql)
-
-
-        # Update top artist
-        update_top_artist_sql = """
-        ;WITH ArtistRank AS (
-            SELECT 
-                CAST(s.DatetimePlayed AS DATE) AS DayDate,
-                a.ID,
-                COUNT(*) AS Plays,
-                ROW_NUMBER() OVER (
-                    PARTITION BY CAST(s.DatetimePlayed AS DATE)
-                    ORDER BY COUNT(*) DESC
-                ) AS rn
-            FROM tbl_Scrobble s
-            JOIN tbl_Song so ON s.Song_FK = so.ID
-            JOIN tbl_Artist a ON so.Artist_FK = a.ID
-            GROUP BY CAST(s.DatetimePlayed AS DATE), a.ID
-        )
-        UPDATE d
-        SET d.TopArtist_FK = ar.ID,
-            d.TopArtistPlays = ar.Plays
-        FROM tbl_Day d
-        JOIN ArtistRank ar 
-            ON d.DayDate = ar.DayDate 
-            AND ar.rn = 1;
-        """
-
-        cur.execute(update_top_artist_sql)
-
-
-        # ----------------------------
-        # Commit everything
-        # ----------------------------
-        conn.commit()
+        run_transaction(queries)
 
         print("✅ Daily stats + months updated successfully.")
 
     except Exception as e:
-        conn.rollback()
         print("❌ Error updating daily stats:", e)
+
+#endregion
 
 # ==============================
 # NOW PLAYING BANNER
 # ==============================
+#region Now Playing Banner
 
 @app.route("/api/now-playing")
 def now_playing():
@@ -1642,7 +1678,7 @@ def now_playing():
 
         # Check if currently playing
         if "@attr" in track and track["@attr"].get("nowplaying"):
-            artist_name, song_name = apply_name_fixes(track.get("artist", {}).get("#text"), track.get("name"))
+            artist_name, album_name, song_name = apply_name_fixes(track.get("artist", {}).get("#text"), track.get("album", {}).get("#text"), track.get("name"))
 
             artist_id = 0
             song_id = 0
@@ -1672,7 +1708,7 @@ def now_playing():
                 "song": song_name,
                 "artist_id": artist_id,
                 "artist": artist_name,
-                "album": track.get("album", {}).get("#text")
+                "album": album_name
             }
 
         return {"playing": False}
@@ -1680,6 +1716,8 @@ def now_playing():
     except Exception as e:
         print("Now playing error:", e)
         return {"playing": False}
+
+#endregion
 
 # ==============================
 # RUN

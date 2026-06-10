@@ -1,3 +1,21 @@
 TODO
 
 1. Gabe / Max song db
+
+SGV
+- Current Lineup (5 songs, ordered)
+    - Change Lineup UI
+    - Switch around order UI
+- Discs ($)
+    - ONLY received from being productive. NO disc rewards from anything in-game.
+    - Packs
+    - Daily Pack
+- Earning Discs ($)
+    - Cooldowns - can only cash in ex. doing laundry once every 5 days.
+- Collection
+    - Collection Completion per Artist, Album, etc.
+- Season
+    - Yearly?
+    - No specified time where matches happen, but perhaps a maximum ~50 per year? And a maximum of 2 in 7 days unless behind.
+    - Matches - Artists are automatically matched against each other, maybe 3 done on match day?
+    - User matches - Opponents are known, but their team order is unknown.

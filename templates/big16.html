@@ -6,9 +6,24 @@
     <div id="big16-table-wrapper">
         <div id="big16-table"></div>
     </div>
+    <h2>Month Creator</h2>
+    <div class="big16-creator-wrapper">
+        <div class="song-pool">
+            <h3>Available Songs</h3>
+            <ul id="candidateSongs">
+            </ul>
+        </div>
+        <div class="big16-ranking">
+            <h3>Big 16</h3>
+            <ul id="big16List">
+            </ul>
+        </div>
+    </div>
+    <button id="saveBig16" onclick="saveBig16()">Save Big 16</button>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script src="{{ url_for('static', filename='js/big16.js') }}"></script>
 {% endblock %}

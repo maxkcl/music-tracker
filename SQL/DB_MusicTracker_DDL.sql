@@ -23,14 +23,14 @@ USE DB_MusicTracker
 CREATE TABLE tbl_Artist
 (
 ID INT IDENTITY(1,1) PRIMARY KEY,
-ArtistName VARCHAR(255),
+ArtistName NVARCHAR(255),
 ImageURL VARCHAR(500)
 )
 
 CREATE TABLE tbl_Album
 (
 ID INT IDENTITY(1,1) PRIMARY KEY,
-AlbumName VARCHAR(255),
+AlbumName NVARCHAR(255),
 ImageURL VARCHAR(500),
 Artist_FK INT REFERENCES tbl_Artist(ID)
 UNIQUE(AlbumName, Artist_FK)
@@ -39,7 +39,7 @@ UNIQUE(AlbumName, Artist_FK)
 CREATE TABLE tbl_Song
 (
 ID INT IDENTITY(1,1) PRIMARY KEY,
-SongName VARCHAR(255),
+SongName NVARCHAR(255),
 Artist_FK INT REFERENCES tbl_Artist(ID),
 Album_FK INT REFERENCES tbl_Album(ID),
 UNIQUE(SongName, Artist_FK, Album_FK)
@@ -83,12 +83,12 @@ CREATE TABLE tbl_RedirectSong (
     Artist_FK INT REFERENCES tbl_Artist(ID),
     Redirect_FK INT REFERENCES tbl_Song(ID)
 );
-DROP TABLE tbl_RedirectAlbum
+
 CREATE TABLE tbl_RedirectAlbum (
     ID INT IDENTITY(1,1) PRIMARY KEY,
     OldName NVARCHAR(255),
-    Artist_FK INT REFERENCES tbl_Artist(ID),
     SongName NVARCHAR(255),
+    Artist_FK INT REFERENCES tbl_Artist(ID),
     Redirect_FK INT REFERENCES tbl_Album(ID)
 );
 
@@ -142,3 +142,5 @@ CREATE TABLE tbl_SGVSongs (
     FOREIGN KEY (Snapshot_FK) REFERENCES tbl_SGVSnapshot(ID),
     FOREIGN KEY (Song_FK) REFERENCES tbl_Song(ID)
 );
+
+SELECT * FROM tbl_SGVSnapshot

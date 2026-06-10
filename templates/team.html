@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<link rel="stylesheet" href = "{{ url_for('static', filename='css/team.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="team-page"">
+    <h2 class="team-title">My Team</h2>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/team.js') }}"></script>
+{% endblock %}

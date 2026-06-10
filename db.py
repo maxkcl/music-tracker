@@ -1,127 +1,106 @@
-import pyodbc
+from sqlalchemy import create_engine, text
+import urllib
+import pandas as pd
 
-CONN_STR = (
+params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=MKCL\MSSQLSERVER01;"
+    "SERVER=MKCL\\MSSQLSERVER01;"
     "DATABASE=DB_MusicTracker;"
     "Trusted_Connection=yes;"
-    "MARS_Connection=yes;"
 )
 
-def get_connection():
-    conn = pyodbc.connect(CONN_STR)
-    return conn, conn.cursor()
+engine = create_engine(
+    f"mssql+pyodbc:///?odbc_connect={params}",
+    pool_pre_ping=True,
+    future=True
+)
 
 # This function runs a single query in SQL, and returns results as a dataframe.
 def run_query(query, params=None, one=False):
-    import pyodbc
-    import pandas as pd
-
-    conn, cur = get_connection()
-
-    try:
-        df = pd.read_sql_query(query, conn, params=params)
-
-        # force full materialization (important)
-        df = df.copy()
-
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            text(query),
+            conn,
+            params=params or {}
+        )
         if one:
             return df.to_dict(orient="records")[0] if not df.empty else None
 
         return df
 
-    finally:
-        conn.close()
-
 # This function runs multiple queries in SQL, returning the results zipped
 # together in a single dictionary.
 def run_multi(query_list, params_list):
-    import pyodbc
-    import pandas as pd
-
-    conn, cur = get_connection()
-
-    try:
+    with engine.connect() as conn:
         results = []
-
         for q, p in zip(query_list, params_list):
-            df = pd.read_sql_query(q, conn, params=p)
-            df = df.copy()
+            df = pd.read_sql_query(
+                text(q),
+                conn,
+                params=p or {}
+            )
             results.append(df)
 
         return results
 
-    finally:
-        conn.close()
-
 # This function executes SQL CRUD other than SELECT. (INSERT, UPDATE, DELETE)
 def run_execute(query, params=None):
-    import pyodbc
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(query),
+            params or {}
+        )
 
-    try:
-        conn, cur = get_connection()
-        cur.execute(query, params or ())
-        conn.commit()
-        return cur.rowcount  # useful sometimes
-    finally:
-        conn.close()
+        return result.rowcount
 
-# This function executes multiple SQL CRUD using run_execute.
+# This function executes multiple SQL CRUD using execute.
 def run_transaction(queries):
-    import pyodbc
-    conn, cur = get_connection()
-
-    try:
+    with engine.begin() as conn:
         for q, p in queries:
-            cur.execute(q, p or ())
-        conn.commit()
-    except:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            conn.execute(
+                text(q),
+                p or {}
+            )
 
 # This function is used when SGV snapshots are created.
 def run_snapshot_transaction(insert_snapshot_sql, insert_songs_sql, rows):
-    import pyodbc
+    with engine.begin() as conn:
 
-    conn, cur = get_connection()
+        result = conn.execute(
+            text(insert_snapshot_sql)
+        )
 
-    try:
-        # ----------------------------
-        # 1. Insert snapshot + get ID
-        # ----------------------------
-        cur.execute(insert_snapshot_sql)
-        snapshot_id = cur.fetchone()[0]
+        snapshot_id = result.fetchone()[0]
 
-        # ----------------------------
-        # 2. Attach snapshot_id
-        # ----------------------------
-        rows_with_snapshot = [(snapshot_id, *row) for row in rows]
+        rows_with_snapshot = []
 
-        # ----------------------------
-        # 3. Insert all songs
-        # ----------------------------
-        cur.fast_executemany = True
-        cur.executemany(insert_songs_sql, rows_with_snapshot)
+        for row in rows:
 
-        # ----------------------------
-        # 4. Commit everything
-        # ----------------------------
-        conn.commit()
+            rows_with_snapshot.append({
+                "snapshot_id": snapshot_id,
+                "song_id": row[0],
+                "rating": row[1],
+                "tp": row[2],
+                "n1s": row[3],
+                "mic": row[4],
+                "plays": row[5],
+                "decayed_plays": row[6],
+                "base_rating": row[7],
+                "legacy_score": row[8],
+                "recency_score": row[9]
+            })
+
+        conn.execute(
+            text(insert_songs_sql),
+            rows_with_snapshot
+        )
 
         return snapshot_id
 
-    except Exception as e:
-        conn.rollback()
-        raise e
-
-    finally:
-        conn.close()
-
 # This function is used for name fixing.
 def run_transaction_fn(fn):
-    conn, cur = get_connection()
+    conn = get_connection()
+    cur = conn.cursor()
 
     try:
         result = fn(cur)
@@ -131,6 +110,7 @@ def run_transaction_fn(fn):
         conn.rollback()
         raise
     finally:
+        cur.close()
         conn.close()
 
 # This function replaces NaN and other invalid values with empty strings in a df.

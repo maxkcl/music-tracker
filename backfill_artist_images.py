@@ -14,7 +14,8 @@ SPOTIFY_CLIENT_SECRET = "2d831e9fb8b4419fbb302ffd2a9c1386"
 # DB SETUP
 # ==============================
 
-conn, cur = get_connection()
+conn = get_connection()
+cur = conn.cursor()
 
 # ==============================
 # CACHE

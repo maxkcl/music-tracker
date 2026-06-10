@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
     loadBig16();       // fetch + populate
+    loadCreator();
 });
 
 async function loadBig16() {
@@ -129,5 +130,93 @@ function enableCellExpansion() {
 
             cell.classList.toggle("expanded");
         });
+    });
+}
+
+// Big 16 Creator
+function loadCreator() {
+    new Sortable(
+        document.getElementById("candidateSongs"),
+        {
+            group: "songs",
+            animation: 150
+        }
+    );
+
+    new Sortable(
+        document.getElementById("big16List"),
+        {
+            group: "songs",
+            animation: 150,
+            onSort: updateRanks,
+            onAdd: function() {
+                const count = document.querySelectorAll("#big16List li").length;
+                if (count > 16) {
+                    alert("Maximum 16 songs");
+                    location.reload();
+                }
+                updateRanks();
+            },
+            onRemove: updateRanks
+        }
+    );
+    
+}
+
+function loadCandidates(year, month) {
+    fetch(`/api/big16/candidates?year=${year}&month=${month}`)
+        .then(r => r.json())
+        .then(data => {
+            const list = document.getElementById("candidateSongs");
+            list.innerHTML = "";
+
+            data.forEach(song => {
+                const li = document.createElement("li");
+                li.className = "song-item";
+                li.dataset.songId = song.songId;
+                li.innerHTML =
+                    `${makeLink(song.artistId, song.artist, "artist")} - ${makeLink(song.songId, song.song, "song")} (${song.plays})`;
+
+                list.appendChild(li);
+            });
+        });
+}
+
+function updateRanks() {
+    const items =
+        document.querySelectorAll("#big16List li");
+
+    items.forEach((item, idx) => {
+        item.dataset.rank = idx + 1;
+        item.querySelector(".rank").textContent =
+            idx + 1;
+    });
+}
+
+function saveBig16() {
+    const songs = [];
+
+    document.querySelectorAll("#big16List li")
+        .forEach((li, idx) => {
+            songs.push({
+                song_id:
+                    parseInt(li.dataset.songId),
+                rank:
+                    idx + 1
+            });
+        });
+
+    fetch("/api/big16/save", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            year: selectedYear,
+            month: selectedMonth,
+            songs: songs
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert("Saved");
     });
 }

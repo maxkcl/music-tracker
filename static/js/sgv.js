@@ -11,7 +11,7 @@ async function loadRatings() {
             alert(data.error);
             return;
         }
-        
+
         renderSongTable(data);
 
     } catch (err) {
@@ -69,6 +69,7 @@ function renderSongTable(data) {
 }
 
 function getArrow(diff) {
+    console.log(diff)
     if (diff > 0) return `<span class="rating-arrow rating-up">↑</span>`;
     if (diff < 0) return `<span class="rating-arrow rating-down">↓</span>`;
     return `<span class="rating-arrow rating-same"></span>`;

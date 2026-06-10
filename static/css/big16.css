@@ -1,0 +1,24 @@
+.big16-creator-wrapper {
+    display: flex;
+    gap: 20px;
+}
+
+.song-pool,
+.big16-ranking {
+    width: 50%;
+}
+
+#candidateSongs,
+#big16List {
+    min-height: 600px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    list-style: none;
+}
+
+.song-item {
+    padding: 8px;
+    margin-bottom: 5px;
+    border: 1px solid #ddd;
+    cursor: move;
+}

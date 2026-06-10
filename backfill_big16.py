@@ -3,14 +3,8 @@ import pandas as pd
 import re
 from db import get_connection
 
-conn = pyodbc.connect(
-    "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=MKCL\MSSQLSERVER01;"
-    "DATABASE=DB_MusicTracker;"
-    "Trusted_Connection=yes;"
-)
-
-conn, cur = get_connection()
+conn = get_connection()
+cur = conn.cursor()
 
 # 1. Load CSV
 df = pd.read_csv("big16.csv")

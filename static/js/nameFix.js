@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const syncBtn = document.getElementById("sync-btn");
 
     let artists = [];
-
+    
     // 🔹 Load all artists once
     fetch("/artists")
         .then(res => res.json())
@@ -124,6 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     syncBtn.addEventListener("click", async () => {
+        console.log("Running fetch...");
         const response = await fetch("/run-fetch", { method: "POST" });
         const data = await response.json();
         if (data.success) {

@@ -1,8 +1,20 @@
+/**
+ * BUGS
+ * Big 16 List (1) (2) (3) should not be movable, shouldn't be able to put song before rank
+ * Big 16 List placing a new song on top of another in a slot should move the old one back to the candidates
+ * Default songs do not have monthly plays
+ * When moving default song to candidates list, they become unmovable
+ * And I want to make the first slot golden
+ * 
+ */
+
 document.addEventListener("DOMContentLoaded", () => {
-    loadBig16();       // fetch + populate
-    loadCreator();
+    loadBig16(); // Top table
+    buildBig16Slots(); // Creator
+    initializeBig16(); // Creator
 });
 
+// Top table
 async function loadBig16() {
     try {
         const res = await fetch("/api/big16");
@@ -134,89 +146,138 @@ function enableCellExpansion() {
 }
 
 // Big 16 Creator
-function loadCreator() {
-    new Sortable(
-        document.getElementById("candidateSongs"),
-        {
-            group: "songs",
-            animation: 150
-        }
-    );
+function initializeBig16() {
+    loadCreator();
 
-    new Sortable(
-        document.getElementById("big16List"),
-        {
+    const yearSelect = document.getElementById("yearSelect");
+    const monthSelect = document.getElementById("monthSelect");
+
+    const currentYear = new Date().getFullYear();
+
+    for (let year = currentYear; year >= 2020; year--) {
+        const option = document.createElement("option");
+        option.value = year;
+        option.textContent = year;
+        yearSelect.appendChild(option);
+    }
+
+    let year = currentYear;
+    let month = new Date().getMonth();
+
+    if (month === 0) {
+        month = 12;
+        year--;
+    }
+
+    yearSelect.value = year;
+    monthSelect.value = month;
+
+    refreshCandidates();
+
+    yearSelect.addEventListener("change", refreshCandidates);
+    monthSelect.addEventListener("change", refreshCandidates);
+}
+
+function loadCreator() {
+    new Sortable(document.getElementById("candidateSongs"), {
+        group: "songs",
+        animation: 150
+    });
+
+    document.querySelectorAll(".big16-slot").forEach(slot => {
+        new Sortable(slot, {
             group: "songs",
             animation: 150,
-            onSort: updateRanks,
-            onAdd: function() {
-                const count = document.querySelectorAll("#big16List li").length;
-                if (count > 16) {
-                    alert("Maximum 16 songs");
-                    location.reload();
-                }
-                updateRanks();
-            },
-            onRemove: updateRanks
-        }
-    );
-    
-}
-
-function loadCandidates(year, month) {
-    fetch(`/api/big16/candidates?year=${year}&month=${month}`)
-        .then(r => r.json())
-        .then(data => {
-            const list = document.getElementById("candidateSongs");
-            list.innerHTML = "";
-
-            data.forEach(song => {
-                const li = document.createElement("li");
-                li.className = "song-item";
-                li.dataset.songId = song.songId;
-                li.innerHTML =
-                    `${makeLink(song.artistId, song.artist, "artist")} - ${makeLink(song.songId, song.song, "song")} (${song.plays})`;
-
-                list.appendChild(li);
-            });
+            swapThreshold: 0.5,
+            onAdd() { slot.classList.remove("empty"); },
+            onRemove() { if (!slot.querySelector(".song-item")) slot.classList.add("empty"); }
         });
+    });
 }
 
-function updateRanks() {
-    const items =
-        document.querySelectorAll("#big16List li");
+async function refreshCandidates() {
 
-    items.forEach((item, idx) => {
-        item.dataset.rank = idx + 1;
-        item.querySelector(".rank").textContent =
-            idx + 1;
+    const year = parseInt(document.getElementById("yearSelect").value);
+    const month = parseInt(document.getElementById("monthSelect").value);
+
+    buildBig16Slots();
+    loadCreator();
+
+    const res = await fetch(`/api/big16/init?year=${year}&month=${month}`);
+    const data = await res.json();
+
+    renderBig16(data.big16);
+    renderCandidates(data.candidates);
+}
+
+function renderBig16(data) {
+    data.forEach(song => {
+        const slot = document.querySelector(`.big16-slot[data-rank="${song.Rank}"]`);
+        if (!slot) return;
+
+        slot.classList.remove("empty");
+
+        const el = document.createElement("div");
+        el.className = "song-item";
+        el.dataset.songId = song.song_id;
+        el.innerHTML =
+            `${makeLink(song.artist_id, song.artist, "artist")} - ${makeLink(song.song_id, song.song, "song")}`;
+
+        slot.appendChild(el);
     });
+}
+
+function renderCandidates(data) {
+    const list = document.getElementById("candidateSongs");
+    list.innerHTML = "";
+
+    data.forEach(song => {
+        const li = document.createElement("li");
+        li.className = "song-item";
+        li.dataset.songId = song.song_id;
+        li.innerHTML =
+            `${makeLink(song.artist_id, song.artist, "artist")} - ${makeLink(song.song_id, song.song, "song")} (${song.plays})`;
+
+        list.appendChild(li);
+    });
+}
+
+function buildBig16Slots() {
+    const list = document.getElementById("big16List");
+    list.innerHTML = "";
+
+    for (let r = 1; r <= 16; r++) {
+        const li = document.createElement("li");
+        li.className = "big16-slot empty";
+        li.dataset.rank = r;
+        li.innerHTML = `<span class="rank">(${r})</span>`;
+        list.appendChild(li);
+    }
 }
 
 function saveBig16() {
     const songs = [];
+    document.querySelectorAll(".big16-slot").forEach(slot => {
+        const song = slot.querySelector(".song-item");
+        if (!song) return;
+        songs.push({ song_id: parseInt(song.dataset.songId), rank: parseInt(slot.dataset.rank) });
+    });
 
-    document.querySelectorAll("#big16List li")
-        .forEach((li, idx) => {
-            songs.push({
-                song_id:
-                    parseInt(li.dataset.songId),
-                rank:
-                    idx + 1
-            });
-        });
+    if (songs.length !== 16) { alert("Please fill all 16 Big 16 slots."); return; }
 
     fetch("/api/big16/save", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            year: selectedYear,
-            month: selectedMonth,
-            songs: songs
+            year: parseInt(document.getElementById("yearSelect").value),
+            month: parseInt(document.getElementById("monthSelect").value),
+            songs
         })
     })
     .then(r => r.json())
     .then(data => {
+        if (data.error) return alert(data.error);
         alert("Saved");
-    });
+    })
+    .catch(() => alert("Save failed"));
 }

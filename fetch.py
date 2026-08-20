@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 import requests
 import time
 from datetime import datetime
@@ -9,8 +11,9 @@ from zoneinfo import ZoneInfo
 # CONFIG
 # ==============================
 
-API_KEY = "71f072d72138772aa0561012523d3e4f"
-USERNAME = "maxkcl"
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+USERNAME = os.getenv("USERNAME")
 
 BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 

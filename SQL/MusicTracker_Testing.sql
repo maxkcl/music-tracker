@@ -259,3 +259,6 @@ SELECT Sc.*, Artist_FK FROM tbl_Scrobble Sc
 LEFT JOIN tbl_Song S ON S.ID = Sc.Song_FK
 LEFT JOIN tbl_Artist A ON A.ID = S.Artist_FK
 WHERE Song_FK = 9790
+
+SELECT * FROM tbl_SGVSnapshot
+SELECT * FROM tbl_SGVSongs

@@ -116,3 +116,8 @@ SELECT * FROM tbl_Month
 SELECT * FROM tbl_SGVSongs
 ORDER BY Snapshot_FK DESC, Rating DESC
 SELECT * FROM tbl_SGVSnapshot
+
+SELECT TOP 1 ID
+        FROM tbl_SGVSnapshot
+        WHERE CreatedAt >= DATEADD(DAY, -43, GETDATE())
+        ORDER BY CreatedAt ASC

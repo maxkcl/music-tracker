@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 
+import os
+from dotenv import load_dotenv
 import pandas as pd
 import time
 import math
@@ -21,9 +23,9 @@ from fetch import (apply_name_fixes, sync)
 app = Flask(__name__)
 CORS(app)
 
-
-API_KEY = "71f072d72138772aa0561012523d3e4f"
-USERNAME = "maxkcl"
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+USERNAME = os.getenv("USERNAME")
 
 BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
@@ -1034,140 +1036,170 @@ def get_big16():
 
     return jsonify(df.to_dict(orient="records"))
 
-@app.route("/api/big16/candidates")
-def big16_candidates():
+@app.route("/api/big16/init")
+def big16_init():
 
     year = int(request.args["year"])
     month = int(request.args["month"])
 
-    query = """
-    SELECT
-        s.ID AS songId,
-        s.SongName AS song,
-        a.ID AS artistId,
-        a.ArtistName AS artist,
-        al.ID AS albumId,
-        al.AlbumName AS album,
-        COUNT(*) AS plays
-    FROM tbl_Scrobble sc
-    JOIN tbl_Song s ON sc.Song_FK = s.ID
-    JOIN tbl_Artist a ON s.Artist_FK = a.ID
-    JOIN tbl_Album al ON s.Album_FK = al.ID
-    WHERE YEAR(sc.DatetimePlayed) = :year
-    AND MONTH(sc.DatetimePlayed) = :month
-    GROUP BY
-        s.ID,
-        s.SongName,
-        a.ID,
-        a.ArtistName,
-        al.ID,
-        al.AlbumName
-    ORDER BY plays DESC
-    """
+    with engine.connect() as conn:
 
-    df = run_query(
-        query,
-        {
-            "year": year,
-            "month": month
-        }
-    )
+        big16_df = pd.read_sql_query(
+            text("""
+                SELECT
+                    b.Rank,
+                    s.ID AS song_id,
+                    s.SongName AS song,
+                    a.ID AS artist_id,
+                    a.ArtistName AS artist
+                FROM tbl_Big16 b
+                JOIN tbl_Month m ON m.ID = b.Month_FK
+                JOIN tbl_Song s ON s.ID = b.Song_FK
+                JOIN tbl_Artist a ON a.ID = s.Artist_FK
+                WHERE m.Year = :year AND m.Month = :month
+                ORDER BY b.Rank
+            """),
+            conn,
+            params={"year": year, "month": month}
+        )
 
-    return jsonify(df.to_dict("records"))
+        candidates_df = pd.read_sql_query(
+            text("""
+                SELECT
+                    s.ID AS song_id,
+                    s.SongName AS song,
+                    a.ID AS artist_id,
+                    a.ArtistName AS artist,
+                    COUNT(*) AS plays
+                FROM tbl_Scrobble sc
+                JOIN tbl_Song s ON sc.Song_FK = s.ID
+                JOIN tbl_Artist a ON s.Artist_FK = a.ID
+                WHERE YEAR(sc.DatetimePlayed) = :year
+                AND MONTH(sc.DatetimePlayed) = :month
+                GROUP BY s.ID, s.SongName, a.ID, a.ArtistName
+                ORDER BY plays DESC
+            """),
+            conn,
+            params={"year": year, "month": month}
+        )
+
+    big16 = big16_df.to_dict(orient="records")
+    candidates = candidates_df.to_dict(orient="records")
+
+    used_ids = {r["song_id"] for r in big16}
+
+    return jsonify({
+        "big16": big16,
+        "candidates": [c for c in candidates if c["song_id"] not in used_ids]
+    })
 
 @app.route("/api/big16/save", methods=["POST"])
 def save_big16():
+    try:
+        data = request.get_json()
 
-    data = request.json
+        year = int(data["year"])
+        month = int(data["month"])
+        songs = data["songs"]
 
-    year = data["year"]
-    month = data["month"]
-    songs = data["songs"]
+        if len(songs) != 16:
+            return {"error": "Big 16 must contain exactly 16 songs."}, 400
 
-    with engine.begin() as conn:
+        ranks = sorted(s["rank"] for s in songs)
+
+        if ranks != list(range(1, 17)):
+            return {"error": "Ranks must be 1-16."}, 400
+
+        song_ids = [s["song_id"] for s in songs]
+
+        if len(song_ids) != len(set(song_ids)):
+            return {"error": "Duplicate songs are not allowed."}, 400
 
         month_date = f"{year}-{month:02d}-01"
 
-        row = conn.execute(
-            text("""
-                SELECT ID
-                FROM tbl_Month
-                WHERE Year = :year
-                AND Month = :month
-            """),
-            {
-                "year": year,
-                "month": month
-            }
-        ).fetchone()
-
-        if row:
-            month_id = row.ID
-
-            conn.execute(
+        with engine.begin() as conn:
+            row = conn.execute(
                 text("""
-                    DELETE FROM tbl_Big16
-                    WHERE Month_FK = :month_id
-                """),
-                {"month_id": month_id}
-            )
-
-        else:
-
-            month_id = conn.execute(
-                text("""
-                    INSERT INTO tbl_Month
-                    (
-                        MonthDate,
-                        Year,
-                        Month
-                    )
-                    OUTPUT INSERTED.ID
-                    VALUES
-                    (
-                        :month_date,
-                        :year,
-                        :month
-                    )
+                    SELECT ID
+                    FROM tbl_Month
+                    WHERE Year = :year
+                    AND Month = :month
                 """),
                 {
-                    "month_date": month_date,
                     "year": year,
                     "month": month
                 }
-            ).scalar_one()
+            ).fetchone()
 
-        rows = [
-            {
-                "month_id": month_id,
-                "song_id": s["song_id"],
-                "rank": s["rank"],
-                "points": 17 - s["rank"]
-            }
-            for s in songs
-        ]
-
-        conn.execute(
-            text("""
-                INSERT INTO tbl_Big16
-                (
-                    Month_FK,
-                    Song_FK,
-                    Rank,
-                    Points
+            if row:
+                month_id = row.ID
+                conn.execute(
+                    text("""
+                        DELETE FROM tbl_Big16
+                        WHERE Month_FK = :month_id
+                    """),
+                    {"month_id": month_id}
                 )
-                VALUES
-                (
-                    :month_id,
-                    :song_id,
-                    :rank,
-                    :points
-                )
-            """),
-            rows
-        )
 
-    return {"status": "ok"}
+            else:
+                month_id = conn.execute(
+                    text("""
+                        INSERT INTO tbl_Month
+                        (
+                            MonthDate,
+                            Year,
+                            Month
+                        )
+                        OUTPUT INSERTED.ID
+                        VALUES
+                        (
+                            :month_date,
+                            :year,
+                            :month
+                        )
+                    """),
+                    {
+                        "month_date": month_date,
+                        "year": year,
+                        "month": month
+                    }
+                ).scalar_one()
+
+            rows = [
+                {
+                    "month_id": month_id,
+                    "song_id": s["song_id"],
+                    "rank": s["rank"],
+                    "points": 17 - s["rank"]
+                }
+                for s in songs
+            ]
+
+            conn.execute(
+                text("""
+                    INSERT INTO tbl_Big16
+                    (
+                        Month_FK,
+                        Song_FK,
+                        Rank,
+                        Points
+                    )
+                    VALUES
+                    (
+                        :month_id,
+                        :song_id,
+                        :rank,
+                        :points
+                    )
+                """),
+                rows
+            )
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        print("BIG16 SAVE ERROR:", e)
+        return {"error": str(e)}, 500
 
 #endregion
 

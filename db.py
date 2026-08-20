@@ -1,13 +1,23 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 import urllib
 import pandas as pd
 
-params = urllib.parse.quote_plus(
-    "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=MKCL\\MSSQLSERVER01;"
-    "DATABASE=DB_MusicTracker;"
-    "Trusted_Connection=yes;"
+load_dotenv()
+
+driver = os.getenv("DB_DRIVER")
+server = os.getenv("DB_SERVER")
+database = os.getenv("DB_DATABASE")
+trust_cert = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "no")
+
+odbc_string = (
+    f"DRIVER={{{driver}}};"
+    f"SERVER={server};"
+    f"DATABASE={database};"
+    f"TrustServerCertificate={trust_cert};"
 )
+params = quote_plus(odbc_string)
 
 engine = create_engine(
     f"mssql+pyodbc:///?odbc_connect={params}",

@@ -143,4 +143,3 @@ CREATE TABLE tbl_SGVSongs (
     FOREIGN KEY (Song_FK) REFERENCES tbl_Song(ID)
 );
 
-SELECT * FROM tbl_SGVSnapshot
